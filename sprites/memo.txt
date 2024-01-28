@@ -1,0 +1,2 @@
+ffmpeg to convert mp4 animation data to png
+fmmpeg -i boxing.mp4 -vf "fps=1" output_%04d.png

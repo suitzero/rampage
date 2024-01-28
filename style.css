@@ -1,0 +1,33 @@
+#main-menu {
+    background-image: url('background-image.png'); /* Replace with your background image path */
+    background-size: cover;
+    background-position: center;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+#game-title {
+    font-size: 5em;
+    font-weight: 700;
+    margin-bottom: 0.5em;
+    color: red; /* Game title font color set to red */
+}
+
+#enter-to-play {
+    font-size: 3em;
+    font-weight: 600;
+    color: black; /* Enter to Play text color set to black */
+    animation: blink 1.5s step-start infinite;
+}
+
+/* Blinking animation */
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
