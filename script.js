@@ -9,14 +9,16 @@ const GRAVITY = 0.5; // Adjust as needed for feel
 
 // Monster Class
 class Monster {
-    constructor(x, y, size, color, speed) {
+    constructor(x, y, size, color, speed, key_config, punch_key_code) { // Added key_config, punch_key_code
         this.x = x;
         this.y = y;
         this.size = size;
         this.color = color;
         this.speed = speed;
-        this.isClimbing = false; // Added
-        this.punchingPower = 10; // Added
+        this.isClimbing = false;
+        this.punchingPower = 10;
+        this.key_config = key_config; // Store key configuration
+        this.punch_key_code = punch_key_code; // Store punch key
     }
 
     draw(ctx) {
@@ -24,12 +26,12 @@ class Monster {
         ctx.fillRect(this.x, this.y, this.size, this.size);
     }
 
-    update() {
+    update(current_key_state) { // current_key_state is either global `keys` or `keys2`
         // Horizontal movement
-        if (keys.ArrowLeft && this.x > 0) {
+        if (current_key_state[this.key_config.left] && this.x > 0) {
             this.x -= this.speed;
         }
-        if (keys.ArrowRight && this.x < canvas.width - this.size) {
+        if (current_key_state[this.key_config.right] && this.x < canvas.width - this.size) {
             this.x += this.speed;
         }
 
@@ -49,12 +51,12 @@ class Monster {
 
         if (this.isClimbing && collidingBuilding) {
             // Vertical movement while climbing
-            if (keys.ArrowUp && this.y > 0) { // Allow climbing up to the top of the canvas
+            if (current_key_state[this.key_config.up] && this.y > 0) { // Allow climbing up to the top of the canvas
                 this.y -= this.speed;
                 // Snap to building top if tries to go above while still "on" it
                 if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
             }
-            if (keys.ArrowDown && this.y < canvas.height - this.size) { // Allow climbing down to the ground
+            if (current_key_state[this.key_config.down] && this.y < canvas.height - this.size) { // Allow climbing down to the ground
                 this.y += this.speed;
                 // Snap to building bottom if tries to go below while still "on" it
                 if (this.y + this.size > collidingBuilding.y + collidingBuilding.height) {
@@ -72,9 +74,8 @@ class Monster {
         }
         if (this.y > canvas.height - this.size) {
             this.y = canvas.height - this.size;
-            if (!this.isClimbing) { // Only stop jumping if not trying to climb from ground
-                 keys.ArrowUp = false; // Stop upward momentum if hitting ground (simple jump stop)
-            }
+            // Removed the ArrowUp=false part as it was too simplistic and tied to global `keys`
+            // Proper jump/climb state management would be more complex.
         }
     }
 
@@ -164,32 +165,65 @@ function checkCollision(obj1, obj2) {
            obj1Bottom > obj2.y;
 }
 
-// Keyboard input state
+// Keyboard input state for player 1
 const keys = {
     ArrowUp: false,
     ArrowDown: false,
     ArrowLeft: false,
     ArrowRight: false
 };
+// Add this for player 2
+const keys2 = {
+    KeyW: false, // Using W
+    KeyS: false, // Using S
+    KeyA: false, // Using A
+    KeyD: false, // Using D
+};
+// Define separate punch keys
+const punchKey1 = 'Space';
+const punchKey2 = 'Enter';
 
 // Event Listeners for keydown and keyup
 window.addEventListener('keydown', (e) => {
-    if (e.key in keys) {
+    // Player 1 movement (uses 'keys' object)
+    if (e.key in keys) { // Arrow keys are in 'keys'
         keys[e.key] = true;
     }
-    if (e.code === 'Space') {
-        monster.punch(); // Call the punch method
+    // Player 2 movement (uses 'keys2' object)
+    if (e.code in keys2) { // WASD keys (e.code) are in 'keys2'
+        keys2[e.code] = true;
+    }
+
+    // Punching actions (direct call based on monster's configured punch key)
+    if (e.code === monster.punch_key_code) {
+        monster.punch(); 
+    }
+    if (e.code === monster2.punch_key_code) {
+        monster2.punch();
     }
 });
 
 window.addEventListener('keyup', (e) => {
+    // Player 1 movement
     if (e.key in keys) {
         keys[e.key] = false;
+    }
+    // Player 2 movement
+    if (e.code in keys2) { // e.code for consistency
+        keys2[e.code] = false;
     }
 });
 
 // Instantiate Monster
-const monster = new Monster(50, canvas.height - 50, 50, 'purple', 5); // Start on ground
+const monster1_key_config = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+const monster1_punch_key = 'Space'; // e.code for Space
+
+const monster2_key_config = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' };
+const monster2_punch_key = 'Enter'; // e.code for Enter
+
+const monster = new Monster(50, canvas.height - 50, 50, 'purple', 5, monster1_key_config, monster1_punch_key); // Start on ground
+
+const monster2 = new Monster(canvas.width - 100, canvas.height - 50, 50, 'red', 5, monster2_key_config, monster2_punch_key); // New monster2
 
 const buildings = [];
 // const groundLevel = canvas.height - 150; // This line is not strictly needed as y is calculated
@@ -218,16 +252,18 @@ function gameLoop() {
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Update game state
-    monster.update(); // Monster logic will be updated later for interactions
+    // Update monsters
+    monster.update(keys);   // Pass P1's key state
+    monster2.update(keys2); // Pass P2's key state
 
     // Draw buildings
     for (const building of buildings) {
         building.draw(ctx);
     }
 
-    // Render game objects
+    // Draw monsters
     monster.draw(ctx);
+    monster2.draw(ctx);
 
     requestAnimationFrame(gameLoop);
 }
