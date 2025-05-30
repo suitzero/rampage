@@ -137,19 +137,35 @@ class Monster {
     }
 
     punch() {
-        console.log("Monster punching attempt...");
-        let hitSomething = false;
+        console.log(`Monster (color: ${this.color}) punching attempt...`);
+        let hitBuilding = false;
+        // --- Existing Building Punch Logic ---
         for (const building of buildings) {
             if (!building.isDestroyed() && checkCollision(this, building)) {
-                console.log("Punch connected with building at x:", building.x);
+                console.log(`Punch connected with building at x: ${building.x}`);
                 building.takeDamage(this.punchingPower);
-                hitSomething = true;
+                hitBuilding = true;
                 // If monster can only damage one building per punch, uncomment break:
                 // break; 
             }
         }
-        if (!hitSomething) {
-            console.log("Punch missed or hit already destroyed building.");
+        // --- End of Existing Building Punch Logic ---
+
+        // --- New AI Enemy Punch Logic ---
+        let hitAIEnemy = false;
+        for (const aiEnemy of aiEnemies) { // Iterate through global aiEnemies array
+            if (!aiEnemy.isDestroyed() && checkCollision(this, aiEnemy)) {
+                console.log(`Punch connected with AIEnemy at x: ${aiEnemy.x}`);
+                aiEnemy.takeDamage(this.punchingPower); // Use monster's punchingPower
+                hitAIEnemy = true;
+                // Optional: If punch should only hit one AI enemy, uncomment break.
+                // break;
+            }
+        }
+        // --- End of New AI Enemy Punch Logic ---
+
+        if (!hitBuilding && !hitAIEnemy) {
+            console.log("Punch missed or hit only already destroyed targets.");
         }
     }
 }
@@ -195,40 +211,58 @@ class AIEnemy {
     draw(ctx) {
         ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.width, this.height);
-        // Optional: Draw health bar for AI enemy
-        if (this.currentHealth < this.initialHealth) {
-            ctx.fillStyle = 'red';
-            ctx.fillRect(this.x, this.y - 7, this.width * (this.currentHealth / this.initialHealth), 3);
+        
+        // Health Bar Logic (improved)
+        if (this.currentHealth > 0) { // Only draw health bar if not fully destroyed (and about to be removed)
+            const healthBarWidth = this.width;
+            const healthBarHeight = 4; // Slightly thicker
+            const healthBarX = this.x;
+            const healthBarY = this.y - healthBarHeight - 2; // 2px spacing above enemy
+
+            // Background of health bar
+            ctx.fillStyle = 'grey'; 
+            ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+            // Current health
+            const currentHealthPercentage = this.currentHealth / this.initialHealth;
+            let healthBarColor = 'green';
+            if (currentHealthPercentage < 0.3) {
+                healthBarColor = 'red';
+            } else if (currentHealthPercentage < 0.6) {
+                healthBarColor = 'orange';
+            }
+            ctx.fillStyle = healthBarColor;
+            ctx.fillRect(healthBarX, healthBarY, healthBarWidth * currentHealthPercentage, healthBarHeight);
         }
     }
 
     update() {
-        // Basic horizontal movement example - will be expanded in the next step
-        this.x += this.speed * this.direction;
+        if (this.isDestroyed()) {
+            // If destroyed, do nothing further in the update loop.
+            // It will be removed from the game in the main gameLoop.
+            return; 
+        }
 
-        // Simple boundary check to reverse direction
+        // --- Existing movement logic ---
+        this.x += this.speed * this.direction;
         if (this.x + this.width > canvas.width || this.x < 0) {
             this.direction *= -1;
             // Optional: move down a bit when changing direction
             // this.y += 10; if (this.y + this.height > canvas.height / 2) this.y = 50;
         }
+        // --- End of existing movement logic ---
 
-        // Firing logic
+        // --- Existing firing logic ---
         if (this.fireCooldown <= 0) {
-            // Create a projectile (Projectile class will be defined in next step)
-            // For now, let's assume a Projectile takes (x, y, size, color, speed, damage)
-            // Fire from the center-bottom of the AI enemy
-            const projectileX = this.x + this.width / 2 - 5; // Assuming projectile size 10
+            const projectileX = this.x + this.width / 2 - 5;
             const projectileY = this.y + this.height;
-            
-            enemyProjectiles.push(new Projectile(projectileX, projectileY, 8, 'yellow', 4, 10)); // size 8, speed 4
-            console.log(`AIEnemy at ${this.x.toFixed(0)} fires!`); 
-
-
-            this.fireCooldown = this.fireRate; // Reset cooldown
+            enemyProjectiles.push(new Projectile(projectileX, projectileY, 8, 'yellow', 4, 10));
+            // console.log(`AIEnemy at ${this.x.toFixed(0)} fires!`); 
+            this.fireCooldown = this.fireRate;
         } else {
             this.fireCooldown--;
         }
+        // --- End of existing firing logic ---
     }
 
     takeDamage(amount) { // Though initially they might be invulnerable
@@ -417,8 +451,15 @@ function gameLoop() {
     monster.update(keys);
     monster2.update(keys2);
 
-    for (const enemy of aiEnemies) {
-        enemy.update();
+    // Update AI Enemies and remove if destroyed
+    for (let i = aiEnemies.length - 1; i >= 0; i--) {
+        const enemy = aiEnemies[i];
+        enemy.update(); // Call update first (it now checks for isDestroyed internally)
+
+        if (enemy.isDestroyed()) {
+            aiEnemies.splice(i, 1); // Remove from array
+            console.log("Destroyed AIEnemy removed from game.");
+        }
     }
 
     for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
