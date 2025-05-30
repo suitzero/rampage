@@ -10,6 +10,9 @@ const GRAVITY = 0.5; // Adjust as needed for feel
 // Game State
 let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
 
+// Score
+let score = 0;
+
 // Monster Class
 class Monster {
     constructor(x, y, size, color, speed, key_config, punch_key_code) {
@@ -268,12 +271,17 @@ class AIEnemy {
         // --- End of existing firing logic ---
     }
 
-    takeDamage(amount) { // Though initially they might be invulnerable
+    takeDamage(amount) { 
+        if (this.isDestroyed()) return; // Already destroyed and points should have been awarded
+
         this.currentHealth -= amount;
-        if (this.currentHealth < 0) {
+        
+        if (this.currentHealth <= 0) {
             this.currentHealth = 0;
+            score += 50; // Add 50 points
+            console.log("AIEnemy defeated! Score: " + score);
         }
-        // console.log("AIEnemy health:", this.currentHealth);
+        // console.log("AIEnemy health:", this.currentHealth); // Original log can be kept if needed for debugging health changes
     }
 
     isDestroyed() {
@@ -324,8 +332,10 @@ class Building {
         this.currentHealth -= amount;
         if (this.currentHealth <= 0) {
             this.currentHealth = 0;
+            // Award points for destroying the building
+            score += 100; // Add 100 points to the global score
+            console.log("Building destroyed! Score: " + score); 
             // Color change to destroyedColor is handled by draw() logic
-            console.log("Building destroyed!");
         }
     }
 
@@ -496,6 +506,10 @@ function resetGame() {
     // 4. Clear Projectiles
     enemyProjectiles.length = 0; // Clear any active enemy projectiles
 
+    // Reset Score
+    score = 0; // Add this line
+    console.log("Score reset to 0.");
+
     // 5. Reset Game State Variable
     gameState = 'playing';
 
@@ -569,7 +583,15 @@ function gameLoop() {
     monster.draw(ctx);
     monster2.draw(ctx);
     
-    // Game Over Message (drawn if state is 'gameOver')
+    // Display Score (during 'playing' state primarily)
+    if (gameState === 'playing') {
+        ctx.font = '20px Arial';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'left';
+        ctx.fillText('Score: ' + score, 10, 25);
+    }
+
+    // Game Over Message / Final Score
     if (gameState === 'gameOver') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -579,6 +601,12 @@ function gameLoop() {
         ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 40);
         ctx.font = '24px Arial';
         ctx.fillText('Press R to Restart', canvas.width / 2, canvas.height / 2 + 20);
+        
+        // Add Final Score to Game Over screen
+        ctx.font = '28px Arial'; // Slightly larger for final score
+        ctx.fillStyle = 'yellow'; // Different color for emphasis
+        ctx.textAlign = 'center';
+        ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2 + 60); // Position below restart message
     }
 
     requestAnimationFrame(gameLoop);
