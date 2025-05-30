@@ -9,7 +9,7 @@ const GRAVITY = 0.5; // Adjust as needed for feel
 
 // Monster Class
 class Monster {
-    constructor(x, y, size, color, speed, key_config, punch_key_code) { // Added key_config, punch_key_code
+    constructor(x, y, size, color, speed, key_config, punch_key_code) {
         this.x = x;
         this.y = y;
         this.size = size;
@@ -17,16 +17,73 @@ class Monster {
         this.speed = speed;
         this.isClimbing = false;
         this.punchingPower = 10;
-        this.key_config = key_config; // Store key configuration
-        this.punch_key_code = punch_key_code; // Store punch key
+        this.key_config = key_config;
+        this.punch_key_code = punch_key_code;
+        this.initialHealth = 100; // Added
+        this.currentHealth = this.initialHealth; // Added
+        this.isDefeated = false; // Added
+        this.invulnerableTime = 0; // For brief invulnerability after getting hit
+        this.invulnerabilityDuration = 60; // 1 second at 60fps
     }
 
     draw(ctx) {
-        ctx.fillStyle = this.color;
+        if (this.isDefeated) {
+            // Optional: draw defeated state (e.g., grayed out, or don't draw at all)
+            ctx.fillStyle = 'rgba(100, 100, 100, 0.5)'; // Semi-transparent gray
+            ctx.fillRect(this.x, this.y, this.size, this.size);
+            return;
+        }
+
+        let effectiveColor = this.color;
+        // Blink if invulnerable
+        if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
+            effectiveColor = 'white'; // Or any color that indicates invulnerability
+        }
+        ctx.fillStyle = effectiveColor;
         ctx.fillRect(this.x, this.y, this.size, this.size);
+
+        // Draw health bar above monster
+        const healthBarWidth = this.size;
+        const healthBarHeight = 5;
+        const healthBarX = this.x;
+        const healthBarY = this.y - healthBarHeight - 2; // 2px spacing
+
+        ctx.fillStyle = 'grey'; // Background of health bar
+        ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+        const currentHealthWidth = healthBarWidth * (this.currentHealth / this.initialHealth);
+        ctx.fillStyle = 'green'; // Color of actual health
+        if (this.currentHealth / this.initialHealth < 0.3) {
+            ctx.fillStyle = 'red'; // Critical health
+        }
+        ctx.fillRect(healthBarX, healthBarY, currentHealthWidth, healthBarHeight);
     }
 
-    update(current_key_state) { // current_key_state is either global `keys` or `keys2`
+    takeDamage(amount) {
+        if (this.invulnerableTime > 0) return; // Already invulnerable
+
+        this.currentHealth -= amount;
+        console.log(`Monster (color: ${this.color}) took ${amount} damage, health: ${this.currentHealth}`);
+        if (this.currentHealth <= 0) {
+            this.currentHealth = 0;
+            this.isDefeated = true; // Add a flag for defeat
+            console.log(`Monster (color: ${this.color}) has been defeated!`);
+            // For now, defeated monster will just stop moving or disappear (handled in update/draw)
+        }
+        this.invulnerableTime = this.invulnerabilityDuration; // Start invulnerability
+    }
+
+    update(current_key_state) {
+        if (this.isDefeated) {
+            // Optional: special behavior for defeated monster, e.g., fall off screen or become static
+            // For now, just stop processing updates if defeated.
+            return; 
+        }
+
+        if (this.invulnerableTime > 0) {
+            this.invulnerableTime--;
+        }
+
         // Horizontal movement
         if (current_key_state[this.key_config.left] && this.x > 0) {
             this.x -= this.speed;
@@ -97,6 +154,96 @@ class Monster {
     }
 }
 
+// Projectile Class (fired by AIEnemies)
+class Projectile {
+    constructor(x, y, size, color, speedY, damage) {
+        this.x = x;
+        this.y = y;
+        this.size = size; // Assuming square projectile for now
+        this.color = color;
+        this.speedY = speedY; // Vertical speed, positive for downwards
+        this.damage = damage;
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+
+    update() {
+        this.y += this.speedY; // Move downwards
+    }
+}
+
+// AIEnemy Class
+class AIEnemy {
+    constructor(x, y, width, height, color, speed, health) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.color = color;
+        this.speed = speed;
+        this.initialHealth = health;
+        this.currentHealth = health;
+        // For movement pattern, e.g., horizontal
+        this.direction = 1; // 1 for right, -1 for left
+        this.fireCooldown = 0; // Add this property
+        this.fireRate = 120; // Fires every 120 frames (2 seconds at 60fps) - adjust as needed
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // Optional: Draw health bar for AI enemy
+        if (this.currentHealth < this.initialHealth) {
+            ctx.fillStyle = 'red';
+            ctx.fillRect(this.x, this.y - 7, this.width * (this.currentHealth / this.initialHealth), 3);
+        }
+    }
+
+    update() {
+        // Basic horizontal movement example - will be expanded in the next step
+        this.x += this.speed * this.direction;
+
+        // Simple boundary check to reverse direction
+        if (this.x + this.width > canvas.width || this.x < 0) {
+            this.direction *= -1;
+            // Optional: move down a bit when changing direction
+            // this.y += 10; if (this.y + this.height > canvas.height / 2) this.y = 50;
+        }
+
+        // Firing logic
+        if (this.fireCooldown <= 0) {
+            // Create a projectile (Projectile class will be defined in next step)
+            // For now, let's assume a Projectile takes (x, y, size, color, speed, damage)
+            // Fire from the center-bottom of the AI enemy
+            const projectileX = this.x + this.width / 2 - 5; // Assuming projectile size 10
+            const projectileY = this.y + this.height;
+            
+            enemyProjectiles.push(new Projectile(projectileX, projectileY, 8, 'yellow', 4, 10)); // size 8, speed 4
+            console.log(`AIEnemy at ${this.x.toFixed(0)} fires!`); 
+
+
+            this.fireCooldown = this.fireRate; // Reset cooldown
+        } else {
+            this.fireCooldown--;
+        }
+    }
+
+    takeDamage(amount) { // Though initially they might be invulnerable
+        this.currentHealth -= amount;
+        if (this.currentHealth < 0) {
+            this.currentHealth = 0;
+        }
+        // console.log("AIEnemy health:", this.currentHealth);
+    }
+
+    isDestroyed() {
+        return this.currentHealth <= 0;
+    }
+}
+
 // Building Class
 class Building {
     constructor(x, y, width, height, initialHealth = 100) {
@@ -151,18 +298,20 @@ class Building {
 }
 
 // Collision detection function (for rectangles)
-function checkCollision(obj1, obj2) {
-    // Assuming obj1 has obj1.size (for monster)
-    // Assuming obj2 has obj2.width and obj2.height (for building)
-    const obj1Right = obj1.x + obj1.size;
-    const obj1Bottom = obj1.y + obj1.size;
-    const obj2Right = obj2.x + obj2.width;
-    const obj2Bottom = obj2.y + obj2.height;
+function getRect(obj) {
+    const width = obj.width || obj.size;
+    const height = obj.height || obj.size;
+    return { x: obj.x, y: obj.y, width: width, height: height };
+}
 
-    return obj1.x < obj2Right &&
-           obj1Right > obj2.x &&
-           obj1.y < obj2Bottom &&
-           obj1Bottom > obj2.y;
+function checkCollision(objA, objB) {
+    const rectA = getRect(objA);
+    const rectB = getRect(objB);
+
+    return rectA.x < rectB.x + rectB.width &&
+           rectA.x + rectA.width > rectB.x &&
+           rectA.y < rectB.y + rectB.height &&
+           rectA.y + rectA.height > rectB.y;
 }
 
 // Keyboard input state for player 1
@@ -247,21 +396,70 @@ if (660 + buildingWidth <= canvas.width) { // Check if it fits horizontally
     buildings.push(new Building(660, canvas.height - b4h, buildingWidth, b4h, 280));
 }
 
+const aiEnemies = [];
+const numberOfAIEnemies = 2; // Start with two helicopters
+
+for (let i = 0; i < numberOfAIEnemies; i++) {
+    // Position them at different points at the top of the screen
+    const enemyX = 100 + i * (canvas.width / (numberOfAIEnemies + 1));
+    const enemyY = 50 + (i % 2 === 0 ? 0 : 30); // Slightly vary Y for visual
+    // AIEnemy(x, y, width, height, color, speed, health)
+    aiEnemies.push(new AIEnemy(enemyX, enemyY, 60, 30, 'darkolivegreen', 2, 100)); // width 60, height 30
+}
+
+const enemyProjectiles = [];
+
 // Game loop
 function gameLoop() {
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Update monsters
-    monster.update(keys);   // Pass P1's key state
-    monster2.update(keys2); // Pass P2's key state
+    // --- UPDATE LOGIC ---
+    monster.update(keys);
+    monster2.update(keys2);
 
-    // Draw buildings
+    for (const enemy of aiEnemies) {
+        enemy.update();
+    }
+
+    for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+        const projectile = enemyProjectiles[i];
+        projectile.update();
+
+        if (checkCollision(monster, projectile)) {
+            monster.takeDamage(projectile.damage); 
+            console.log("Monster 1 hit!"); // Keep or adjust log
+            enemyProjectiles.splice(i, 1);
+            continue;
+        }
+        if (checkCollision(monster2, projectile)) {
+            monster2.takeDamage(projectile.damage); 
+            console.log("Monster 2 hit!"); // Keep or adjust log
+            enemyProjectiles.splice(i, 1);
+            continue;
+        }
+        if (projectile.y > canvas.height) {
+            enemyProjectiles.splice(i, 1);
+        }
+    }
+
+    // --- DRAW LOGIC ---
+    // Draw background elements first
+    // (No specific background elements yet, but buildings are like a backdrop)
     for (const building of buildings) {
         building.draw(ctx);
     }
 
-    // Draw monsters
+    // Draw AI enemies
+    for (const enemy of aiEnemies) {
+        enemy.draw(ctx);
+    }
+
+    // Draw projectiles
+    for (const projectile of enemyProjectiles) { // Draw remaining projectiles
+        projectile.draw(ctx);
+    }
+
+    // Draw player monsters on top of projectiles and AI enemies
     monster.draw(ctx);
     monster2.draw(ctx);
 
