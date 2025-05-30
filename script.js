@@ -7,6 +7,9 @@ canvas.height = 700; // Increase height for more vertical space
 
 const GRAVITY = 0.5; // Adjust as needed for feel
 
+// Game State
+let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
+
 // Monster Class
 class Monster {
     constructor(x, y, size, color, speed, key_config, punch_key_code) {
@@ -368,21 +371,28 @@ const punchKey2 = 'Enter';
 
 // Event Listeners for keydown and keyup
 window.addEventListener('keydown', (e) => {
-    // Player 1 movement (uses 'keys' object)
-    if (e.key in keys) { // Arrow keys are in 'keys'
-        keys[e.key] = true;
-    }
-    // Player 2 movement (uses 'keys2' object)
-    if (e.code in keys2) { // WASD keys (e.code) are in 'keys2'
-        keys2[e.code] = true;
-    }
+    if (gameState === 'playing') {
+        // --- Player 1 movement ---
+        if (e.key in keys) { 
+            keys[e.key] = true;
+        }
+        // --- Player 2 movement ---
+        if (e.code in keys2) { 
+            keys2[e.code] = true;
+        }
 
-    // Punching actions (direct call based on monster's configured punch key)
-    if (e.code === monster.punch_key_code) {
-        monster.punch(); 
-    }
-    if (e.code === monster2.punch_key_code) {
-        monster2.punch();
+        // --- Punching actions (while playing) ---
+        if (e.code === monster.punch_key_code) {
+            monster.punch(); 
+        }
+        if (e.code === monster2.punch_key_code) {
+            monster2.punch();
+        }
+    } else if (gameState === 'gameOver') {
+        // --- Restart Game Input ---
+        if (e.code === 'KeyR') { // 'R' key for Restart
+            resetGame();
+        }
     }
 });
 
@@ -443,66 +453,133 @@ for (let i = 0; i < numberOfAIEnemies; i++) {
 
 const enemyProjectiles = [];
 
-// Game loop
+function resetGame() {
+    console.log("Resetting game...");
+
+    // 1. Reset Player Monsters
+    // Monster 1 (monster)
+    monster.currentHealth = monster.initialHealth;
+    monster.isDefeated = false;
+    monster.x = 50; // Initial X
+    monster.y = canvas.height - monster.size; // Initial Y (on ground)
+    monster.invulnerableTime = 0;
+    // Reset any other monster-specific states if necessary (e.g., isClimbing)
+    monster.isClimbing = false; 
+
+    // Monster 2 (monster2)
+    monster2.currentHealth = monster2.initialHealth;
+    monster2.isDefeated = false;
+    monster2.x = canvas.width - 100; // Initial X for monster2
+    monster2.y = canvas.height - monster2.size; // Initial Y for monster2
+    monster2.invulnerableTime = 0;
+    monster2.isClimbing = false;
+
+    // 2. Reset Buildings
+    buildings.length = 0; // Clear current buildings
+    const buildingWidth = 120;
+    let b1h = 400; buildings.push(new Building(150, canvas.height - b1h, buildingWidth, b1h, 200));
+    let b2h = 550; buildings.push(new Building(320, canvas.height - b2h, buildingWidth, b2h, 300));
+    let b3h = 450; buildings.push(new Building(490, canvas.height - b3h, buildingWidth, b3h, 250));
+    if (660 + buildingWidth <= canvas.width) {
+        let b4h = 500; buildings.push(new Building(660, canvas.height - b4h, buildingWidth, b4h, 280));
+    }
+
+    // 3. Reset AI Enemies
+    aiEnemies.length = 0; // Clear current AI enemies
+    const numberOfAIEnemies = 2;
+    for (let i = 0; i < numberOfAIEnemies; i++) {
+        const enemyX = 100 + i * (canvas.width / (numberOfAIEnemies + 1));
+        const enemyY = 50 + (i % 2 === 0 ? 0 : 30);
+        aiEnemies.push(new AIEnemy(enemyX, enemyY, 60, 30, 'darkolivegreen', 2, 100));
+    }
+
+    // 4. Clear Projectiles
+    enemyProjectiles.length = 0; // Clear any active enemy projectiles
+
+    // 5. Reset Game State Variable
+    gameState = 'playing';
+
+    console.log("Game reset complete. State: " + gameState);
+}
+
 function gameLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // --- UPDATE LOGIC ---
-    monster.update(keys);
-    monster2.update(keys2);
+    if (gameState === 'playing') {
+        // --- UPDATE LOGIC ---
+        monster.update(keys);
+        monster2.update(keys2);
 
-    // Update AI Enemies and remove if destroyed
-    for (let i = aiEnemies.length - 1; i >= 0; i--) {
-        const enemy = aiEnemies[i];
-        enemy.update(); // Call update first (it now checks for isDestroyed internally)
+        // Check for Game Over Condition (now correctly inside the 'playing' block)
+        if (monster.isDefeated && monster2.isDefeated) {
+            gameState = 'gameOver';
+            console.log("Game Over! Both monsters are defeated.");
+        }
 
-        if (enemy.isDestroyed()) {
-            aiEnemies.splice(i, 1); // Remove from array
-            console.log("Destroyed AIEnemy removed from game.");
-        }
-    }
+        // Update AI Enemies and remove if destroyed (only if still playing)
+        if (gameState === 'playing') { // Re-check, as game might have just ended
+            for (let i = aiEnemies.length - 1; i >= 0; i--) {
+                const enemy = aiEnemies[i];
+                enemy.update();
+                if (enemy.isDestroyed()) {
+                    aiEnemies.splice(i, 1);
+                    // console.log("Destroyed AIEnemy removed from game."); // Less noisy
+                }
+            }
 
-    for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
-        const projectile = enemyProjectiles[i];
-        projectile.update();
+            // Update and handle collisions for Enemy Projectiles (only if still playing)
+            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                const projectile = enemyProjectiles[i];
+                projectile.update();
 
-        if (checkCollision(monster, projectile)) {
-            monster.takeDamage(projectile.damage); 
-            console.log("Monster 1 hit!"); // Keep or adjust log
-            enemyProjectiles.splice(i, 1);
-            continue;
+                if (!monster.isDefeated && checkCollision(monster, projectile)) {
+                    monster.takeDamage(projectile.damage);
+                    enemyProjectiles.splice(i, 1);
+                    continue;
+                }
+                if (!monster2.isDefeated && checkCollision(monster2, projectile)) {
+                    monster2.takeDamage(projectile.damage);
+                    enemyProjectiles.splice(i, 1);
+                    continue;
+                }
+                if (projectile.y > canvas.height) {
+                    enemyProjectiles.splice(i, 1);
+                }
+            }
         }
-        if (checkCollision(monster2, projectile)) {
-            monster2.takeDamage(projectile.damage); 
-            console.log("Monster 2 hit!"); // Keep or adjust log
-            enemyProjectiles.splice(i, 1);
-            continue;
-        }
-        if (projectile.y > canvas.height) {
-            enemyProjectiles.splice(i, 1);
-        }
-    }
+    } // --- END OF "if (gameState === 'playing')" for ALL updates ---
 
     // --- DRAW LOGIC ---
-    // Draw background elements first
-    // (No specific background elements yet, but buildings are like a backdrop)
+    // Buildings (drawn as static backdrop even on game over)
     for (const building of buildings) {
         building.draw(ctx);
     }
 
-    // Draw AI enemies
-    for (const enemy of aiEnemies) {
-        enemy.draw(ctx);
+    // AI Enemies and Projectiles (only if playing, otherwise they vanish)
+    if (gameState === 'playing') {
+        for (const enemy of aiEnemies) {
+            enemy.draw(ctx);
+        }
+        for (const projectile of enemyProjectiles) {
+            projectile.draw(ctx);
+        }
     }
 
-    // Draw projectiles
-    for (const projectile of enemyProjectiles) { // Draw remaining projectiles
-        projectile.draw(ctx);
-    }
-
-    // Draw player monsters on top of projectiles and AI enemies
+    // Player Monsters (always drawn; their .draw() shows defeated state)
     monster.draw(ctx);
     monster2.draw(ctx);
+    
+    // Game Over Message (drawn if state is 'gameOver')
+    if (gameState === 'gameOver') {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = '48px Arial';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 40);
+        ctx.font = '24px Arial';
+        ctx.fillText('Press R to Restart', canvas.width / 2, canvas.height / 2 + 20);
+    }
 
     requestAnimationFrame(gameLoop);
 }
