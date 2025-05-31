@@ -13,6 +13,166 @@ let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
 // Score
 let score = 0;
 
+// --- Web Audio API Setup ---
+let audioCtx; // To be initialized on user interaction or page load
+
+// Global variables for sound buffers
+let sfxPunch = null;
+let sfxBuildingDamage = null;
+let sfxBuildingDestroyed = null; // Specific sound for final destruction
+let sfxMonsterHit = null;
+let sfxEnemyShoot = null;
+let sfxEnemyDestroyed = null;   // Specific sound for AI enemy destruction
+
+// Function to initialize AudioContext (must be called after user interaction)
+function initAudio() {
+    if (!audioCtx) {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            console.log("AudioContext initialized.");
+            // Resume context if it's in a suspended state (common in modern browsers)
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        } catch (e) {
+            console.error("Web Audio API is not supported in this browser.", e);
+            // Fallback or disable audio if needed
+        }
+    }
+    return audioCtx; // Return the context
+}
+
+
+// Function to load a sound file
+async function loadSound(url) {
+    if (!audioCtx) {
+        // Try to initialize audio context if not already done.
+        // This might not work if called without prior user interaction for audioCtx creation.
+        initAudio();
+    }
+    if (!audioCtx) { // If still no audioCtx (e.g. API not supported, or not yet interacted)
+        console.warn(`AudioContext not available. Cannot load sound: ${url}`);
+        return null;
+    }
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status} for ${url}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        console.log(`Sound loaded successfully: ${url}`);
+        return audioBuffer;
+    } catch (error) {
+        console.error(`Error loading sound ${url}:`, error);
+        return null; // Return null or a dummy buffer if loading fails
+    }
+}
+
+// Function to play a sound buffer
+function playSound(buffer, volume = 1.0) {
+    if (!buffer || !audioCtx || audioCtx.state === 'suspended') {
+        // console.warn("Cannot play sound: AudioBuffer is null, AudioContext not ready, or suspended.");
+        // Attempt to resume if suspended and called from user interaction context
+        if (audioCtx && audioCtx.state === 'suspended') {
+             audioCtx.resume().then(() => {
+                if (audioCtx.state === 'running' && buffer) {
+                    // console.log("AudioContext resumed, trying to play sound again.");
+                    // Actually play now (code duplicated for clarity, can be refactored)
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = buffer;
+                    const gainNode = audioCtx.createGain();
+                    gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+                    source.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    source.start(0);
+                }
+             });
+        }
+        return;
+    }
+    if (audioCtx.state === 'running') { // Check if context is running
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+
+        // Create a gain node for volume control
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(volume, audioCtx.currentTime); // Set volume
+
+        source.connect(gainNode); // Connect source to gain node
+        gainNode.connect(audioCtx.destination); // Connect gain node to output (speakers)
+        source.start(0); // Play the sound now
+    }
+}
+
+// Attempt to initialize AudioContext on first keydown (a common user interaction)
+// This helps with browser autoplay policies.
+async function userInteractionListener() { // Make it async to await initSounds if needed
+    if (!audioCtx || audioCtx.state === 'suspended') {
+        console.log("User interaction detected, attempting to initialize/resume AudioContext.");
+        initAudio();
+    }
+    if (audioCtx && audioCtx.state === 'running') { // Only load sounds if context is running
+        await initSounds(); // Load sounds
+    } else {
+        console.warn("AudioContext not running after user interaction. Sounds not loaded yet.");
+        // We might need a fallback or a button to explicitly enable sound later.
+    }
+    // Event listeners are automatically removed due to { once: true }
+}
+window.addEventListener('keydown', userInteractionListener, { once: true });
+window.addEventListener('click', userInteractionListener, { once: true });
+
+// Placeholder sound file paths (replace with your actual file paths)
+const soundFiles = {
+    punch: 'sfx/punch.wav',
+    buildingDamage: 'sfx/building_damage.wav',
+    buildingDestroyed: 'sfx/building_destroyed.wav',
+    monsterHit: 'sfx/monster_hit.wav',
+    enemyShoot: 'sfx/enemy_shoot.wav',
+    enemyDestroyed: 'sfx/enemy_destroyed.wav'
+};
+
+async function initSounds() {
+    // Ensure AudioContext is ready or try to initialize it.
+    if (!audioCtx || audioCtx.state !== 'running') {
+        console.log("AudioContext not running, attempting to initialize/resume for sound loading.");
+        initAudio();
+        if (!audioCtx || audioCtx.state !== 'running') {
+             console.warn("AudioContext is not active. Sounds may not load or play.");
+        }
+    }
+
+    console.log("Loading sounds...");
+    try {
+        [
+            sfxPunch,
+            sfxBuildingDamage,
+            sfxBuildingDestroyed,
+            sfxMonsterHit,
+            sfxEnemyShoot,
+            sfxEnemyDestroyed
+        ] = await Promise.all([
+            loadSound(soundFiles.punch),
+            loadSound(soundFiles.buildingDamage),
+            loadSound(soundFiles.buildingDestroyed),
+            loadSound(soundFiles.monsterHit),
+            loadSound(soundFiles.enemyShoot),
+            loadSound(soundFiles.enemyDestroyed)
+        ]);
+        console.log("All sounds attempted to load.");
+    } catch (error) {
+        console.error("An error occurred during parallel sound loading:", error);
+    }
+
+    if (sfxPunch) {
+        console.log("Punch sound is ready.");
+    } else {
+        console.warn("Punch sound failed to load or AudioContext was not ready.");
+    }
+}
+
 // Monster Class
 class Monster {
     constructor(x, y, size, color, speed, key_config, punch_key_code) {
@@ -66,9 +226,11 @@ class Monster {
     }
 
     takeDamage(amount) {
-        if (this.invulnerableTime > 0) return; // Already invulnerable
+        if (this.invulnerableTime > 0) return; // Already invulnerable, no damage, no sound
 
         this.currentHealth -= amount;
+        playSound(sfxMonsterHit); // Play monster HIT sound
+
         console.log(`Monster (color: ${this.color}) took ${amount} damage, health: ${this.currentHealth}`);
         if (this.currentHealth <= 0) {
             this.currentHealth = 0;
@@ -83,7 +245,7 @@ class Monster {
         if (this.isDefeated) {
             // Optional: special behavior for defeated monster, e.g., fall off screen or become static
             // For now, just stop processing updates if defeated.
-            return; 
+            return;
         }
 
         if (this.invulnerableTime > 0) {
@@ -143,6 +305,8 @@ class Monster {
     }
 
     punch() {
+        playSound(sfxPunch); // Play punch sound - sfxPunch should be the loaded AudioBuffer
+
         console.log(`Monster (color: ${this.color}) punching attempt...`);
         let hitBuilding = false;
         // --- Existing Building Punch Logic ---
@@ -152,7 +316,7 @@ class Monster {
                 building.takeDamage(this.punchingPower);
                 hitBuilding = true;
                 // If monster can only damage one building per punch, uncomment break:
-                // break; 
+                // break;
             }
         }
         // --- End of Existing Building Punch Logic ---
@@ -217,7 +381,7 @@ class AIEnemy {
     draw(ctx) {
         ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.width, this.height);
-        
+
         // Health Bar Logic (improved)
         if (this.currentHealth > 0) { // Only draw health bar if not fully destroyed (and about to be removed)
             const healthBarWidth = this.width;
@@ -226,7 +390,7 @@ class AIEnemy {
             const healthBarY = this.y - healthBarHeight - 2; // 2px spacing above enemy
 
             // Background of health bar
-            ctx.fillStyle = 'grey'; 
+            ctx.fillStyle = 'grey';
             ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
 
             // Current health
@@ -246,7 +410,7 @@ class AIEnemy {
         if (this.isDestroyed()) {
             // If destroyed, do nothing further in the update loop.
             // It will be removed from the game in the main gameLoop.
-            return; 
+            return;
         }
 
         // --- Existing movement logic ---
@@ -263,7 +427,8 @@ class AIEnemy {
             const projectileX = this.x + this.width / 2 - 5;
             const projectileY = this.y + this.height;
             enemyProjectiles.push(new Projectile(projectileX, projectileY, 8, 'yellow', 4, 10));
-            // console.log(`AIEnemy at ${this.x.toFixed(0)} fires!`); 
+            playSound(sfxEnemyShoot); // Play enemy SHOOT sound
+            // console.log(`AIEnemy at ${this.x.toFixed(0)} fires!`);
             this.fireCooldown = this.fireRate;
         } else {
             this.fireCooldown--;
@@ -271,15 +436,16 @@ class AIEnemy {
         // --- End of existing firing logic ---
     }
 
-    takeDamage(amount) { 
+    takeDamage(amount) {
         if (this.isDestroyed()) return; // Already destroyed and points should have been awarded
 
         this.currentHealth -= amount;
-        
+
         if (this.currentHealth <= 0) {
             this.currentHealth = 0;
             score += 50; // Add 50 points
             console.log("AIEnemy defeated! Score: " + score);
+            playSound(sfxEnemyDestroyed); // Play AI ENEMY DESTRUCTION sound
         }
         // console.log("AIEnemy health:", this.currentHealth); // Original log can be kept if needed for debugging health changes
     }
@@ -317,7 +483,7 @@ class Building {
         } else if (this.isDestroyed()) {
             currentColor = this.destroyedColor;
         }
-        
+
         ctx.fillStyle = currentColor;
         ctx.fillRect(this.x, this.y, this.width, this.height);
 
@@ -334,8 +500,11 @@ class Building {
             this.currentHealth = 0;
             // Award points for destroying the building
             score += 100; // Add 100 points to the global score
-            console.log("Building destroyed! Score: " + score); 
-            // Color change to destroyedColor is handled by draw() logic
+            console.log("Building destroyed! Score: " + score);
+            playSound(sfxBuildingDestroyed); // Play building DESTRUCTION sound
+        } else {
+            // If not destroyed, but took damage
+            playSound(sfxBuildingDamage); // Play building DAMAGE sound
         }
     }
 
@@ -383,17 +552,17 @@ const punchKey2 = 'Enter';
 window.addEventListener('keydown', (e) => {
     if (gameState === 'playing') {
         // --- Player 1 movement ---
-        if (e.key in keys) { 
+        if (e.key in keys) {
             keys[e.key] = true;
         }
         // --- Player 2 movement ---
-        if (e.code in keys2) { 
+        if (e.code in keys2) {
             keys2[e.code] = true;
         }
 
         // --- Punching actions (while playing) ---
         if (e.code === monster.punch_key_code) {
-            monster.punch(); 
+            monster.punch();
         }
         if (e.code === monster2.punch_key_code) {
             monster2.punch();
@@ -474,7 +643,7 @@ function resetGame() {
     monster.y = canvas.height - monster.size; // Initial Y (on ground)
     monster.invulnerableTime = 0;
     // Reset any other monster-specific states if necessary (e.g., isClimbing)
-    monster.isClimbing = false; 
+    monster.isClimbing = false;
 
     // Monster 2 (monster2)
     monster2.currentHealth = monster2.initialHealth;
@@ -582,7 +751,7 @@ function gameLoop() {
     // Player Monsters (always drawn; their .draw() shows defeated state)
     monster.draw(ctx);
     monster2.draw(ctx);
-    
+
     // Display Score (during 'playing' state primarily)
     if (gameState === 'playing') {
         ctx.font = '20px Arial';
@@ -601,7 +770,7 @@ function gameLoop() {
         ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 40);
         ctx.font = '24px Arial';
         ctx.fillText('Press R to Restart', canvas.width / 2, canvas.height / 2 + 20);
-        
+
         // Add Final Score to Game Over screen
         ctx.font = '28px Arial'; // Slightly larger for final score
         ctx.fillStyle = 'yellow'; // Different color for emphasis
