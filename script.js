@@ -7,11 +7,37 @@ canvas.height = 700; // Increase height for more vertical space
 
 const GRAVITY = 0.5; // Adjust as needed for feel
 
+// Placeholder sprite frame dimensions (adjust to your actual sprite sheets)
+const INITIAL_MONSTER_SIZE = 50; // Collision box size
+const MONSTER_FRAME_WIDTH = 64;
+const MONSTER_FRAME_HEIGHT = 64;
+
 // Game State
 let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
 
 // Score
 let score = 0;
+
+// --- Sprite Sheet Setup ---
+let monster1SpriteSheet = null;
+let monster2SpriteSheet = null;
+// Add more for other entities (AI, effects) if needed later
+
+// Function to load a sprite sheet image
+function loadSpriteSheet(url) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+            console.log(`Sprite sheet loaded successfully: ${url}`);
+            resolve(image);
+        };
+        image.onerror = (error) => {
+            console.error(`Error loading sprite sheet ${url}:`, error);
+            reject(error); // Reject the promise if the image fails to load
+        };
+        image.src = url;
+    });
+}
 
 // --- Web Audio API Setup ---
 let audioCtx; // To be initialized on user interaction or page load
@@ -70,6 +96,35 @@ async function loadSound(url) {
     }
 }
 
+// Placeholder image file paths (replace with your actual file paths)
+const spriteSheetFiles = {
+    monster1: 'img/monster1_sprites.png',
+    monster2: 'img/monster2_sprites.png'
+};
+
+async function initGraphics() {
+    console.log("Loading graphics...");
+    try {
+        // Load sprite sheets and store them
+        [
+            monster1SpriteSheet,
+            monster2SpriteSheet
+        ] = await Promise.all([
+            loadSpriteSheet(spriteSheetFiles.monster1),
+            loadSpriteSheet(spriteSheetFiles.monster2)
+        ]);
+        console.log("All sprite sheets attempted to load.");
+
+        if (monster1SpriteSheet) console.log("Monster 1 sprite sheet ready.");
+        else console.warn("Monster 1 sprite sheet failed to load.");
+        if (monster2SpriteSheet) console.log("Monster 2 sprite sheet ready.");
+        else console.warn("Monster 2 sprite sheet failed to load.");
+
+    } catch (error) {
+        console.error("An error occurred during parallel sprite sheet loading:", error);
+    }
+}
+
 // Function to play a sound buffer
 function playSound(buffer, volume = 1.0) {
     if (!buffer || !audioCtx || audioCtx.state === 'suspended') {
@@ -114,11 +169,15 @@ async function userInteractionListener() { // Make it async to await initSounds 
         initAudio();
     }
     if (audioCtx && audioCtx.state === 'running') { // Only load sounds if context is running
-        await initSounds(); // Load sounds
+        // Load sounds first, or in parallel if preferred
+        await initSounds();
     } else {
         console.warn("AudioContext not running after user interaction. Sounds not loaded yet.");
-        // We might need a fallback or a button to explicitly enable sound later.
     }
+
+    // Load graphics regardless of audio state, but after interaction
+    await initGraphics();
+
     // Event listeners are automatically removed due to { once: true }
 }
 window.addEventListener('keydown', userInteractionListener, { once: true });
@@ -175,54 +234,125 @@ async function initSounds() {
 
 // Monster Class
 class Monster {
-    constructor(x, y, size, color, speed, key_config, punch_key_code) {
+    constructor(x, y, initialSize, color, speed, key_config, punch_key_code, spriteSheet = null, frameWidth = 0, frameHeight = 0) {
         this.x = x;
         this.y = y;
-        this.size = size;
-        this.color = color;
+        this.size = initialSize; // This might represent collision box size or drawing scale
+        this.color = color;      // Fallback color if sprite fails to load or for collision box
         this.speed = speed;
-        this.isClimbing = false;
-        this.punchingPower = 10;
+
+        // Health and defeat state
+        this.initialHealth = 100;
+        this.currentHealth = this.initialHealth;
+        this.isDefeated = false;
+        this.invulnerableTime = 0;
+        this.invulnerabilityDuration = 60;
+
+        // Controls configuration
         this.key_config = key_config;
         this.punch_key_code = punch_key_code;
-        this.initialHealth = 100; // Added
-        this.currentHealth = this.initialHealth; // Added
-        this.isDefeated = false; // Added
-        this.invulnerableTime = 0; // For brief invulnerability after getting hit
-        this.invulnerabilityDuration = 60; // 1 second at 60fps
+
+        // Punching state (optional, for animation or cooldown)
+        this.isPunching = false;
+        this.punchDuration = 30; // e.g., 0.5 seconds at 60fps
+        this.punchTimer = 0;
+
+        // Climbing state
+        this.isClimbing = false;
+
+        // --- New Sprite and Animation Properties ---
+        this.spriteSheet = spriteSheet;         // The loaded Image object for the sprite sheet
+        this.frameWidth = frameWidth;           // Width of a single frame in the sprite sheet
+        this.frameHeight = frameHeight;         // Height of a single frame in the sprite sheet
+
+        // Animation state
+        this.currentFrame = 0;                  // Current frame index in an animation sequence
+        this.animationFrameCount = 4;           // Default total number of frames for current animation (e.g., walk cycle)
+                                                // This might change based on action (idle, walk, punch)
+        this.frameTimer = 0;                    // Timer to control animation speed
+        this.frameInterval = 10;                // Update frame every 10 game loops (adjust for speed)
+
+        this.isMoving = false;                  // Is the monster currently moving (for walk/idle animation)
+        this.facingDirection = 'right';         // 'left' or 'right', for flipping sprite if needed
+
+        // Define animation sequences (example: row index in sprite sheet for different animations)
+        // These are just conceptual for now and depend on sprite sheet layout.
+        // e.g. this.animations = { idle: {row: 0, frames: 2}, walk: {row: 1, frames: 4}, punch: {row: 2, frames: 3} };
+        // this.currentAnimation = 'idle';
     }
 
     draw(ctx) {
         if (this.isDefeated) {
-            // Optional: draw defeated state (e.g., grayed out, or don't draw at all)
-            ctx.fillStyle = 'rgba(100, 100, 100, 0.5)'; // Semi-transparent gray
-            ctx.fillRect(this.x, this.y, this.size, this.size);
-            return;
+            if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0) {
+                // Fallback to simple gray box for defeated state for now:
+                ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+                ctx.fillRect(this.x, this.y, this.size, this.size); // Use collision box size
+            } else { // Fallback if no sprite for defeated state
+                ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+            }
+            return; // Stop further drawing if defeated
         }
 
-        let effectiveColor = this.color;
-        // Blink if invulnerable
-        if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
-            effectiveColor = 'white'; // Or any color that indicates invulnerability
+        // Attempt to draw using sprite sheet
+        if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0) {
+            let sourceX = this.currentFrame * this.frameWidth;
+            let sourceY = 0; // Assuming walk/idle animation is on the first row (row 0)
+
+            const drawWidth = this.frameWidth;
+            const drawHeight = this.frameHeight;
+
+            if (this.facingDirection === 'left') {
+                ctx.save();
+                ctx.scale(-1, 1);
+                ctx.drawImage(
+                    this.spriteSheet,
+                    sourceX, sourceY, this.frameWidth, this.frameHeight,
+                    -(this.x + drawWidth), this.y, drawWidth, drawHeight
+                );
+                ctx.restore();
+            } else { // Facing right
+                ctx.drawImage(
+                    this.spriteSheet,
+                    sourceX, sourceY, this.frameWidth, this.frameHeight,
+                    this.x, this.y, drawWidth, drawHeight
+                );
+            }
+
+            if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.fillRect(this.x, this.y, drawWidth, drawHeight);
+            }
+
+        } else {
+            // Fallback to drawing a colored rectangle
+            let effectiveColor = this.color;
+            if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
+                effectiveColor = 'white';
+            }
+            ctx.fillStyle = effectiveColor;
+            ctx.fillRect(this.x, this.y, this.size, this.size); // Use collision box 'size'
         }
-        ctx.fillStyle = effectiveColor;
-        ctx.fillRect(this.x, this.y, this.size, this.size);
 
-        // Draw health bar above monster
-        const healthBarWidth = this.size;
-        const healthBarHeight = 5;
-        const healthBarX = this.x;
-        const healthBarY = this.y - healthBarHeight - 2; // 2px spacing
+        // Draw health bar
+        const healthBarDisplayX = this.x;
+        const healthBarDisplayWidth = (this.spriteSheet && this.frameWidth > 0) ? this.frameWidth : this.size;
 
-        ctx.fillStyle = 'grey'; // Background of health bar
-        ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+        if (this.currentHealth > 0) {
+            const healthBarHeight = 5;
+            const healthBarY = this.y - healthBarHeight - 2;
 
-        const currentHealthWidth = healthBarWidth * (this.currentHealth / this.initialHealth);
-        ctx.fillStyle = 'green'; // Color of actual health
-        if (this.currentHealth / this.initialHealth < 0.3) {
-            ctx.fillStyle = 'red'; // Critical health
+            ctx.fillStyle = 'grey';
+            ctx.fillRect(healthBarDisplayX, healthBarY, healthBarDisplayWidth, healthBarHeight);
+
+            const currentHealthWidth = healthBarDisplayWidth * (this.currentHealth / this.initialHealth);
+            let healthBarColor = 'green';
+            if (this.currentHealth / this.initialHealth < 0.3) healthBarColor = 'red';
+            else if (this.currentHealth / this.initialHealth < 0.6) healthBarColor = 'orange';
+
+            ctx.fillStyle = healthBarColor;
+            ctx.fillRect(healthBarDisplayX, healthBarY, currentHealthWidth, healthBarHeight);
         }
-        ctx.fillRect(healthBarX, healthBarY, currentHealthWidth, healthBarHeight);
     }
 
     takeDamage(amount) {
@@ -243,8 +373,7 @@ class Monster {
 
     update(current_key_state) {
         if (this.isDefeated) {
-            // Optional: special behavior for defeated monster, e.g., fall off screen or become static
-            // For now, just stop processing updates if defeated.
+            // If using sprites, could switch to a "defeated" animation/frame here if not handled by draw()
             return;
         }
 
@@ -252,20 +381,39 @@ class Monster {
             this.invulnerableTime--;
         }
 
-        // Horizontal movement
-        if (current_key_state[this.key_config.left] && this.x > 0) {
-            this.x -= this.speed;
-        }
-        if (current_key_state[this.key_config.right] && this.x < canvas.width - this.size) {
-            this.x += this.speed;
+        // --- Handle Punching State ---
+        if (this.isPunching) {
+            this.punchTimer++;
+            if (this.punchTimer >= this.punchDuration) {
+                this.isPunching = false;
+                this.punchTimer = 0;
+            }
         }
 
-        this.isClimbing = false;
+        // --- Movement and Animation State Logic (excluding punch state for now) ---
+        // Assume not moving initially for this frame
+        this.isMoving = false;
+
+        // Horizontal movement & Facing Direction
+        if (!this.isPunching) { // Don't move if in middle of a punch animation/action
+            if (current_key_state[this.key_config.left] && this.x > 0) {
+                this.x -= this.speed;
+                this.facingDirection = 'left';
+                this.isMoving = true;
+            }
+            if (current_key_state[this.key_config.right] && this.x < canvas.width - this.size) {
+                // canvas.width - this.frameWidth might be more accurate if sprite is drawn at frameWidth
+                this.x += this.speed;
+                this.facingDirection = 'right';
+                this.isMoving = true;
+            }
+        }
+
+        // --- Climbing Logic (existing, might need to integrate isMoving/animation for climb) ---
+        this.isClimbing = false; // Reset before check
         let collidingBuilding = null;
-
-        for (const building of buildings) {
+         for (const building of buildings) {
             if (!building.isDestroyed() && checkCollision(this, building)) {
-                // Check if monster is roughly aligned vertically with the building part it's colliding with
                 if (this.y + this.size > building.y && this.y < building.y + building.height) {
                     this.isClimbing = true;
                     collidingBuilding = building;
@@ -275,37 +423,53 @@ class Monster {
         }
 
         if (this.isClimbing && collidingBuilding) {
-            // Vertical movement while climbing
-            if (current_key_state[this.key_config.up] && this.y > 0) { // Allow climbing up to the top of the canvas
-                this.y -= this.speed;
-                // Snap to building top if tries to go above while still "on" it
-                if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
-            }
-            if (current_key_state[this.key_config.down] && this.y < canvas.height - this.size) { // Allow climbing down to the ground
-                this.y += this.speed;
-                // Snap to building bottom if tries to go below while still "on" it
-                if (this.y + this.size > collidingBuilding.y + collidingBuilding.height) {
-                     this.y = collidingBuilding.y + collidingBuilding.height - this.size;
+            this.isMoving = true; // Consider climbing as a form of movement for animation
+            if (!this.isPunching) { // Allow vertical climb movement only if not punching
+                if (current_key_state[this.key_config.up] && this.y > 0) {
+                    this.y -= this.speed;
+                    if (this.y < collidingBuilding.y) this.y = collidingBuilding.y; // Snap to top
+                }
+                if (current_key_state[this.key_config.down] && this.y < canvas.height - this.size) {
+                    this.y += this.speed;
+                    if (this.y + this.size > collidingBuilding.y + collidingBuilding.height) { // Snap to bottom
+                        this.y = collidingBuilding.y + collidingBuilding.height - this.size;
+                    }
                 }
             }
-        } else {
-            // Not climbing: apply gravity
-            this.y += GRAVITY * 5; // Apply gravity (the multiplier makes it fall faster)
+        } else if (!this.isPunching) { // Apply gravity only if not climbing AND not punching
+            this.y += GRAVITY * 5;
         }
 
-        // Ground constraint (and canvas top constraint)
-        if (this.y < 0) {
-            this.y = 0;
-        }
-        if (this.y > canvas.height - this.size) {
+        // --- Boundary Constraints for Y ---
+         if (this.y < 0) this.y = 0;
+         if (this.y > canvas.height - this.size) { // this.size for collision box
             this.y = canvas.height - this.size;
-            // Removed the ArrowUp=false part as it was too simplistic and tied to global `keys`
-            // Proper jump/climb state management would be more complex.
+         }
+
+
+        // --- Animation Frame Update Logic ---
+        if (this.isPunching) {
+            // Placeholder for specific punch animation frame logic
+        } else if (this.isMoving) {
+            // Walking/Climbing animation
+            this.frameTimer++;
+            if (this.frameTimer >= this.frameInterval) {
+                this.frameTimer = 0;
+                this.currentFrame = (this.currentFrame + 1) % this.animationFrameCount; // Cycle through frames
+            }
+        } else {
+            // Idle animation: typically first frame or a short loop
+            this.currentFrame = 0; // Simple idle: show first frame
         }
     }
 
     punch() {
-        playSound(sfxPunch); // Play punch sound - sfxPunch should be the loaded AudioBuffer
+        // Optional: Prevent starting a new punch if already in a punch animation/cooldown
+        // if (this.isPunching || this.punchTimer > 0 ) return;
+
+        playSound(sfxPunch);
+        this.isPunching = true;     // Start punch state
+        this.punchTimer = 0;        // Reset punch animation timer
 
         console.log(`Monster (color: ${this.color}) punching attempt...`);
         let hitBuilding = false;
@@ -593,9 +757,21 @@ const monster1_punch_key = 'Space'; // e.code for Space
 const monster2_key_config = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' };
 const monster2_punch_key = 'Enter'; // e.code for Enter
 
-const monster = new Monster(50, canvas.height - 50, 50, 'purple', 5, monster1_key_config, monster1_punch_key); // Start on ground
+const monster = new Monster(
+    50, // x
+    canvas.height - INITIAL_MONSTER_SIZE, // y (top of collision box on ground)
+    INITIAL_MONSTER_SIZE, 'purple', 5,
+    monster1_key_config, monster1_punch_key,
+    monster1SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
+);
 
-const monster2 = new Monster(canvas.width - 100, canvas.height - 50, 50, 'red', 5, monster2_key_config, monster2_punch_key); // New monster2
+const monster2 = new Monster(
+    canvas.width - INITIAL_MONSTER_SIZE - 50, // x (collision box 50px from right edge)
+    canvas.height - INITIAL_MONSTER_SIZE,    // y
+    INITIAL_MONSTER_SIZE, 'red', 5,
+    monster2_key_config, monster2_punch_key,
+    monster2SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
+);
 
 const buildings = [];
 // const groundLevel = canvas.height - 150; // This line is not strictly needed as y is calculated
@@ -636,22 +812,18 @@ function resetGame() {
     console.log("Resetting game...");
 
     // 1. Reset Player Monsters
-    // Monster 1 (monster)
-    monster.currentHealth = monster.initialHealth;
-    monster.isDefeated = false;
-    monster.x = 50; // Initial X
-    monster.y = canvas.height - monster.size; // Initial Y (on ground)
-    monster.invulnerableTime = 0;
-    // Reset any other monster-specific states if necessary (e.g., isClimbing)
-    monster.isClimbing = false;
-
-    // Monster 2 (monster2)
-    monster2.currentHealth = monster2.initialHealth;
-    monster2.isDefeated = false;
-    monster2.x = canvas.width - 100; // Initial X for monster2
-    monster2.y = canvas.height - monster2.size; // Initial Y for monster2
-    monster2.invulnerableTime = 0;
-    monster2.isClimbing = false;
+    // 1. Reset Player Monsters
+    // Re-instantiate monsters to ensure all properties are reset, including sprite/animation ones.
+    monster = new Monster(
+        50, canvas.height - INITIAL_MONSTER_SIZE, INITIAL_MONSTER_SIZE, 'purple', 5,
+        monster1_key_config, monster1_punch_key,
+        monster1SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
+    );
+    monster2 = new Monster(
+        canvas.width - INITIAL_MONSTER_SIZE - 50, canvas.height - INITIAL_MONSTER_SIZE, INITIAL_MONSTER_SIZE, 'red', 5,
+        monster2_key_config, monster2_punch_key,
+        monster2SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
+    );
 
     // 2. Reset Buildings
     buildings.length = 0; // Clear current buildings
