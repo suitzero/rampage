@@ -282,94 +282,121 @@ class Monster {
         this.frameWidth = frameWidth;           // Width of a single frame in the sprite sheet
         this.frameHeight = frameHeight;         // Height of a single frame in the sprite sheet
 
-        // Animation state
         this.currentFrame = 0;                  // Current frame index in an animation sequence
-        this.animationFrameCount = 4;           // Default total number of frames for current animation (e.g., walk cycle)
-                                                // This might change based on action (idle, walk, punch)
-        this.frameTimer = 0;                    // Timer to control animation speed
-        this.frameInterval = 10;                // Update frame every 10 game loops (adjust for speed)
-
         this.isMoving = false;                  // Is the monster currently moving (for walk/idle animation)
         this.facingDirection = 'right';         // 'left' or 'right', for flipping sprite if needed
 
-        // Define animation sequences (example: row index in sprite sheet for different animations)
-        // These are just conceptual for now and depend on sprite sheet layout.
-        // e.g. this.animations = { idle: {row: 0, frames: 2}, walk: {row: 1, frames: 4}, punch: {row: 2, frames: 3} };
-        // this.currentAnimation = 'idle';
+        // --- New Animation System Properties ---
+        this.animations = {
+            // Placeholder: these values (rowIndex, frameCount, frameInterval)
+            // MUST be updated to match your actual sprite sheet layout.
+            'idle':     { rowIndex: 0, frameCount: 2, frameInterval: 20, loop: true },
+            'walk':     { rowIndex: 1, frameCount: 4, frameInterval: 10, loop: true },
+            'punch':    { rowIndex: 2, frameCount: 3, frameInterval: 7,  loop: false },
+            'climb':    { rowIndex: 3, frameCount: 2, frameInterval: 15, loop: true },
+            'hit':      { rowIndex: 4, frameCount: 1, frameInterval: 10, loop: false },
+            'defeated': { rowIndex: 5, frameCount: 1, frameInterval: 1,  loop: false }
+        };
+        this.currentAnimation = 'idle'; // Start with idle animation
+        // Ensure the currentAnimation exists in the animations object before trying to access its properties
+        if (!this.animations[this.currentAnimation]) {
+            console.error(`Animation "${this.currentAnimation}" not found! Defaulting to first animation or static frame.`);
+            // Fallback to the first defined animation or a default if currentAnimation is invalid
+            const firstAnimName = Object.keys(this.animations)[0];
+            if (firstAnimName) {
+                this.currentAnimation = firstAnimName;
+            } else { // No animations defined, fallback to static
+                this.animations[this.currentAnimation] = { rowIndex:0, frameCount: 1, frameInterval: 100, loop: true};
+            }
+        }
+        this.animationFrameCount = this.animations[this.currentAnimation].frameCount;
+        this.frameInterval = this.animations[this.currentAnimation].frameInterval;
+        this.frameTimer = 0;
     }
 
     draw(ctx) {
+        const currentAnimConfig = this.animations[this.currentAnimation];
+
         if (this.isDefeated) {
-            if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0) {
-                // Fallback to simple gray box for defeated state for now:
-                ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-                ctx.fillRect(this.x, this.y, this.size, this.size); // Use collision box size
-            } else { // Fallback if no sprite for defeated state
+            if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0 && currentAnimConfig && this.currentAnimation === 'defeated') {
+                const sourceX = this.currentFrame * this.frameWidth;
+                const sourceY = currentAnimConfig.rowIndex * this.frameHeight;
+                const drawWidth = this.frameWidth;
+                const drawHeight = this.frameHeight;
+
+                if (this.facingDirection === 'left') {
+                    ctx.save(); ctx.scale(-1, 1);
+                    ctx.drawImage(this.spriteSheet, sourceX, sourceY, this.frameWidth, this.frameHeight, -(this.x + drawWidth), this.y, drawWidth, drawHeight);
+                    ctx.restore();
+                } else {
+                    ctx.drawImage(this.spriteSheet, sourceX, sourceY, this.frameWidth, this.frameHeight, this.x, this.y, drawWidth, drawHeight);
+                }
+            } else {
                 ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
                 ctx.fillRect(this.x, this.y, this.size, this.size);
             }
-            return; // Stop further drawing if defeated
+            return;
         }
 
-        // Attempt to draw using sprite sheet
         if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0) {
-            let sourceX = this.currentFrame * this.frameWidth;
-            let sourceY = 0; // Assuming walk/idle animation is on the first row (row 0)
+            if (!currentAnimConfig) {
+                console.warn(`Monster ${this.color} has invalid currentAnimation: ${this.currentAnimation}. Drawing fallback rectangle.`);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+            } else {
+                let sourceX = this.currentFrame * this.frameWidth;
+                let sourceY = currentAnimConfig.rowIndex * this.frameHeight; // DYNAMIC sourceY
 
-            const drawWidth = this.frameWidth;
-            const drawHeight = this.frameHeight;
+                const drawWidth = this.frameWidth;
+                const drawHeight = this.frameHeight;
 
-            if (this.facingDirection === 'left') {
-                ctx.save();
-                ctx.scale(-1, 1);
-                ctx.drawImage(
-                    this.spriteSheet,
-                    sourceX, sourceY, this.frameWidth, this.frameHeight,
-                    -(this.x + drawWidth), this.y, drawWidth, drawHeight
-                );
-                ctx.restore();
-            } else { // Facing right
-                ctx.drawImage(
-                    this.spriteSheet,
-                    sourceX, sourceY, this.frameWidth, this.frameHeight,
-                    this.x, this.y, drawWidth, drawHeight
-                );
+                if (this.facingDirection === 'left') {
+                    ctx.save();
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(
+                        this.spriteSheet,
+                        sourceX, sourceY, this.frameWidth, this.frameHeight,
+                        -(this.x + drawWidth), this.y, drawWidth, drawHeight
+                    );
+                    ctx.restore();
+                } else { // Facing right
+                    ctx.drawImage(
+                        this.spriteSheet,
+                        sourceX, sourceY, this.frameWidth, this.frameHeight,
+                        this.x, this.y, drawWidth, drawHeight
+                    );
+                }
+
+                if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.fillRect(this.x, this.y, drawWidth, drawHeight);
+                }
             }
-
-            if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.fillRect(this.x, this.y, drawWidth, drawHeight);
-            }
-
         } else {
-            // Fallback to drawing a colored rectangle
             let effectiveColor = this.color;
             if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime / 6) % 2 === 0) {
                 effectiveColor = 'white';
             }
             ctx.fillStyle = effectiveColor;
-            ctx.fillRect(this.x, this.y, this.size, this.size); // Use collision box 'size'
+            ctx.fillRect(this.x, this.y, this.size, this.size);
         }
 
-        // Draw health bar
+        // Health Bar (draw only if not defeated, which is handled by the early return in isDefeated block)
         const healthBarDisplayX = this.x;
         const healthBarDisplayWidth = (this.spriteSheet && this.frameWidth > 0) ? this.frameWidth : this.size;
+        const healthBarHeight = 5;
+        const healthBarY = this.y - healthBarHeight - 2;
 
-        if (this.currentHealth > 0) {
-            const healthBarHeight = 5;
-            const healthBarY = this.y - healthBarHeight - 2;
+        ctx.fillStyle = 'grey';
+        ctx.fillRect(healthBarDisplayX, healthBarY, healthBarDisplayWidth, healthBarHeight);
 
-            ctx.fillStyle = 'grey';
-            ctx.fillRect(healthBarDisplayX, healthBarY, healthBarDisplayWidth, healthBarHeight);
+        const currentHealthWidth = healthBarDisplayWidth * (this.currentHealth / this.initialHealth);
+        let healthBarColor = 'green';
+        if (this.currentHealth / this.initialHealth < 0.3) healthBarColor = 'red';
+        else if (this.currentHealth / this.initialHealth < 0.6) healthBarColor = 'orange';
 
-            const currentHealthWidth = healthBarDisplayWidth * (this.currentHealth / this.initialHealth);
-            let healthBarColor = 'green';
-            if (this.currentHealth / this.initialHealth < 0.3) healthBarColor = 'red';
-            else if (this.currentHealth / this.initialHealth < 0.6) healthBarColor = 'orange';
-
-            ctx.fillStyle = healthBarColor;
-            ctx.fillRect(healthBarDisplayX, healthBarY, currentHealthWidth, healthBarHeight);
-        }
+        ctx.fillStyle = healthBarColor;
+        ctx.fillRect(healthBarDisplayX, healthBarY, currentHealthWidth, healthBarHeight);
     }
 
     takeDamage(amount) {
@@ -517,6 +544,73 @@ class Monster {
 
         if (!hitBuilding && !hitAIEnemy) {
             console.log("Punch missed or hit only already destroyed targets.");
+        }
+    }
+
+    setCurrentAnimation(newAnimationName) {
+        // Ensure the animation exists in our definition to prevent errors
+        if (!this.animations[newAnimationName]) {
+            console.warn(`Animation "${newAnimationName}" not found for monster ${this.color}. Current animation: ${this.currentAnimation}`);
+            // Fallback: ensure current animation's properties are set if the new one is invalid
+            const animConfig = this.animations[this.currentAnimation];
+            if (animConfig) { // If currentAnimation itself was valid
+                this.animationFrameCount = animConfig.frameCount;
+                this.frameInterval = animConfig.frameInterval;
+            } else { // Absolute fallback if currentAnimation was also somehow invalid
+                this.animationFrameCount = 1; // Default to a single frame
+                this.frameInterval = 100;     // Default to a slow interval
+                console.error(`Monster ${this.color} has no valid current animation and "${newAnimationName}" is also invalid.`);
+            }
+            return;
+        }
+
+        if (this.currentAnimation !== newAnimationName) {
+            this.currentAnimation = newAnimationName;
+            this.currentFrame = 0; // Reset frame for the new animation
+            const animConfig = this.animations[this.currentAnimation];
+            this.animationFrameCount = animConfig.frameCount;
+            this.frameInterval = animConfig.frameInterval;
+            this.frameTimer = 0;    // Reset timer for the new animation's interval
+            // console.log(`Monster ${this.color} animation changed to: ${this.currentAnimation}`);
+        }
+    }
+
+    updateAnimationFrame() {
+        // Get the configuration for the current animation
+        const currentAnimConfig = this.animations[this.currentAnimation];
+
+        if (!currentAnimConfig) return; // No animation config found for current state
+
+        const loopAnimation = currentAnimConfig.loop !== undefined ? currentAnimConfig.loop : true;
+        const frameCount = currentAnimConfig.frameCount;
+        const frameInterval = currentAnimConfig.frameInterval;
+
+        if (frameCount <= 1) return; // Single frame animation, no progression needed.
+
+        // If animation is non-looping and has already reached its last frame, stay there.
+        if (!loopAnimation && this.currentFrame === frameCount - 1) {
+            return;
+        }
+
+        // Increment frame timer
+        this.frameTimer++;
+
+        // Check if it's time to advance to the next frame
+        if (this.frameTimer >= frameInterval) {
+            this.frameTimer = 0; // Reset timer
+
+            // Advance the frame
+            this.currentFrame++;
+
+            // If the animation loops and currentFrame exceeds frameCount, reset to 0
+            if (this.currentFrame >= frameCount) {
+                if (loopAnimation) {
+                    this.currentFrame = 0;
+                } else {
+                    // If it doesn't loop, clamp to the last frame
+                    this.currentFrame = frameCount - 1;
+                }
+            }
         }
     }
 }
