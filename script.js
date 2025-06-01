@@ -11,6 +11,10 @@ const GRAVITY = 0.5; // Adjust as needed for feel
 const INITIAL_MONSTER_SIZE = 50; // Collision box size
 const MONSTER_FRAME_WIDTH = 64;
 const MONSTER_FRAME_HEIGHT = 64;
+const AI_ENEMY_FRAME_WIDTH = 60; // Placeholder
+const AI_ENEMY_FRAME_HEIGHT = 30; // Placeholder
+const PROJECTILE_FRAME_WIDTH = 10; // Placeholder
+const PROJECTILE_FRAME_HEIGHT = 10; // Placeholder
 
 // Game State
 let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
@@ -21,6 +25,8 @@ let score = 0;
 // --- Sprite Sheet Setup ---
 let monster1SpriteSheet = null;
 let monster2SpriteSheet = null;
+let aiEnemySpriteSheet = null;    // New
+let projectileSpriteSheet = null; // New
 // Add more for other entities (AI, effects) if needed later
 
 // Function to load a sprite sheet image
@@ -99,7 +105,9 @@ async function loadSound(url) {
 // Placeholder image file paths (replace with your actual file paths)
 const spriteSheetFiles = {
     monster1: 'img/monster1_sprites.png',
-    monster2: 'img/monster2_sprites.png'
+    monster2: 'img/monster2_sprites.png',
+    aiEnemy: 'img/ai_helicopter.png',     // New
+    projectile: 'img/projectile_bullet.png' // New
 };
 
 async function initGraphics() {
@@ -108,17 +116,26 @@ async function initGraphics() {
         // Load sprite sheets and store them
         [
             monster1SpriteSheet,
-            monster2SpriteSheet
+            monster2SpriteSheet,
+            aiEnemySpriteSheet,     // Add this to destructuring assignment
+            projectileSpriteSheet   // Add this to destructuring assignment
         ] = await Promise.all([
             loadSpriteSheet(spriteSheetFiles.monster1),
-            loadSpriteSheet(spriteSheetFiles.monster2)
+            loadSpriteSheet(spriteSheetFiles.monster2),
+            loadSpriteSheet(spriteSheetFiles.aiEnemy),     // Load AI enemy sprite
+            loadSpriteSheet(spriteSheetFiles.projectile)   // Load projectile sprite
         ]);
         console.log("All sprite sheets attempted to load.");
 
+        // Optional: Add checks and logs for new sprite sheets
         if (monster1SpriteSheet) console.log("Monster 1 sprite sheet ready.");
         else console.warn("Monster 1 sprite sheet failed to load.");
         if (monster2SpriteSheet) console.log("Monster 2 sprite sheet ready.");
         else console.warn("Monster 2 sprite sheet failed to load.");
+        if (aiEnemySpriteSheet) console.log("AI Enemy sprite sheet ready.");
+        else console.warn("AI Enemy sprite sheet failed to load.");
+        if (projectileSpriteSheet) console.log("Projectile sprite sheet ready.");
+        else console.warn("Projectile sprite sheet failed to load.");
 
     } catch (error) {
         console.error("An error occurred during parallel sprite sheet loading:", error);
@@ -506,18 +523,39 @@ class Monster {
 
 // Projectile Class (fired by AIEnemies)
 class Projectile {
-    constructor(x, y, size, color, speedY, damage) {
+    constructor(x, y, initialSize, color, speedY, damage, spriteSheet = null, frameWidth = 0, frameHeight = 0) {
         this.x = x;
         this.y = y;
-        this.size = size; // Assuming square projectile for now
-        this.color = color;
-        this.speedY = speedY; // Vertical speed, positive for downwards
+        this.size = initialSize; // Collision box size (assuming square)
+        this.color = color;      // Fallback color
+        this.speedY = speedY;
         this.damage = damage;
+
+        // New sprite properties
+        this.spriteSheet = spriteSheet;
+        this.frameWidth = frameWidth;   // Width of a single frame (likely the whole image for a simple projectile)
+        this.frameHeight = frameHeight; // Height of a single frame
+        this.currentFrame = 0;          // Default to frame 0, if sprite sheet has multiple frames (e.g., for animation)
+                                        // For a static projectile sprite, this will just be 0.
     }
 
     draw(ctx) {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.size, this.size);
+        if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0) {
+            // Draw sprite
+            const sourceX = this.currentFrame * this.frameWidth; // currentFrame is likely always 0 for static projectile
+            const sourceY = 0; // Assuming sprite is in the first row
+
+            // Visual size is determined by sprite frame dimensions
+            const drawWidth = this.frameWidth;
+            const drawHeight = this.frameHeight;
+
+            ctx.drawImage(this.spriteSheet, sourceX, sourceY, this.frameWidth, this.frameHeight,
+                          this.x, this.y, drawWidth, drawHeight);
+        } else {
+            // Fallback to drawing a rectangle
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.size, this.size); // Use collision box 'size'
+        }
     }
 
     update() {
@@ -527,46 +565,68 @@ class Projectile {
 
 // AIEnemy Class
 class AIEnemy {
-    constructor(x, y, width, height, color, speed, health) {
+    constructor(x, y, initialWidth, initialHeight, color, speed, health, spriteSheet = null, frameWidth = 0, frameHeight = 0) {
         this.x = x;
         this.y = y;
-        this.width = width;
-        this.height = height;
-        this.color = color;
+        this.width = initialWidth;   // Collision box width
+        this.height = initialHeight; // Collision box height
+        this.color = color;          // Fallback color
         this.speed = speed;
         this.initialHealth = health;
         this.currentHealth = health;
-        // For movement pattern, e.g., horizontal
-        this.direction = 1; // 1 for right, -1 for left
-        this.fireCooldown = 0; // Add this property
-        this.fireRate = 120; // Fires every 120 frames (2 seconds at 60fps) - adjust as needed
+        this.direction = 1;
+        this.fireCooldown = 0;
+        this.fireRate = 120;
+
+        // New sprite properties
+        this.spriteSheet = spriteSheet;
+        this.frameWidth = frameWidth;     // Width of a single frame from the sheet
+        this.frameHeight = frameHeight;   // Height of a single frame from the sheet
+        this.currentFrame = 0;            // For basic animation, if any (e.g., first frame)
     }
 
     draw(ctx) {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+        if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0) {
+            // Draw sprite
+            const sourceX = this.currentFrame * this.frameWidth; // Assuming currentFrame is 0 for static sprite for now
+            const sourceY = 0; // Assuming sprite is in the first row
 
-        // Health Bar Logic (improved)
-        if (this.currentHealth > 0) { // Only draw health bar if not fully destroyed (and about to be removed)
-            const healthBarWidth = this.width;
-            const healthBarHeight = 4; // Slightly thicker
-            const healthBarX = this.x;
-            const healthBarY = this.y - healthBarHeight - 2; // 2px spacing above enemy
+            // Visual size is determined by sprite frame dimensions
+            const drawWidth = this.frameWidth;
+            const drawHeight = this.frameHeight;
 
-            // Background of health bar
+            if (this.direction === -1) { // Example: if moving left and sprite needs to flip (helicopter might not)
+                // For now, default: no flip, or sprite sheet handles directions
+                ctx.drawImage(this.spriteSheet, sourceX, sourceY, this.frameWidth, this.frameHeight,
+                              this.x, this.y, drawWidth, drawHeight);
+            } else { // Facing right or default
+                ctx.drawImage(this.spriteSheet, sourceX, sourceY, this.frameWidth, this.frameHeight,
+                              this.x, this.y, drawWidth, drawHeight);
+            }
+
+        } else {
+            // Fallback to drawing a rectangle
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height); // Use collision box dimensions
+        }
+
+        // Health Bar Logic (adjust to sprite's visual position and width)
+        const displayWidth = (this.spriteSheet && this.frameWidth > 0) ? this.frameWidth : this.width;
+        if (this.currentHealth > 0) {
+            const healthBarHeight = 4;
+            const healthBarX = this.x; // Health bar aligns with sprite's x
+            const healthBarY = this.y - healthBarHeight - 2;
+
             ctx.fillStyle = 'grey';
-            ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+            ctx.fillRect(healthBarX, healthBarY, displayWidth, healthBarHeight);
 
-            // Current health
             const currentHealthPercentage = this.currentHealth / this.initialHealth;
             let healthBarColor = 'green';
-            if (currentHealthPercentage < 0.3) {
-                healthBarColor = 'red';
-            } else if (currentHealthPercentage < 0.6) {
-                healthBarColor = 'orange';
-            }
+            if (currentHealthPercentage < 0.3) healthBarColor = 'red';
+            else if (currentHealthPercentage < 0.6) healthBarColor = 'orange';
+
             ctx.fillStyle = healthBarColor;
-            ctx.fillRect(healthBarX, healthBarY, healthBarWidth * currentHealthPercentage, healthBarHeight);
+            ctx.fillRect(healthBarX, healthBarY, displayWidth * currentHealthPercentage, healthBarHeight);
         }
     }
 
@@ -588,9 +648,14 @@ class AIEnemy {
 
         // --- Existing firing logic ---
         if (this.fireCooldown <= 0) {
-            const projectileX = this.x + this.width / 2 - 5;
+            const projectileX = this.x + this.width / 2 - (PROJECTILE_FRAME_WIDTH / 2); // Center based on sprite
             const projectileY = this.y + this.height;
-            enemyProjectiles.push(new Projectile(projectileX, projectileY, 8, 'yellow', 4, 10));
+
+            enemyProjectiles.push(new Projectile(
+                projectileX, projectileY,
+                8, 'yellow', 4, 10, // initialSize (collision: 8x8), color, speedY, damage
+                projectileSpriteSheet, PROJECTILE_FRAME_WIDTH, PROJECTILE_FRAME_HEIGHT // sprite info
+            ));
             playSound(sfxEnemyShoot); // Play enemy SHOOT sound
             // console.log(`AIEnemy at ${this.x.toFixed(0)} fires!`);
             this.fireCooldown = this.fireRate;
@@ -841,7 +906,12 @@ function resetGame() {
     for (let i = 0; i < numberOfAIEnemies; i++) {
         const enemyX = 100 + i * (canvas.width / (numberOfAIEnemies + 1));
         const enemyY = 50 + (i % 2 === 0 ? 0 : 30);
-        aiEnemies.push(new AIEnemy(enemyX, enemyY, 60, 30, 'darkolivegreen', 2, 100));
+        aiEnemies.push(new AIEnemy(
+            enemyX, enemyY,
+            60, 30, // initialWidth, initialHeight (collision box)
+            'darkolivegreen', 2, 100, // color, speed, health
+            aiEnemySpriteSheet, AI_ENEMY_FRAME_WIDTH, AI_ENEMY_FRAME_HEIGHT // sprite info
+        ));
     }
 
     // 4. Clear Projectiles
