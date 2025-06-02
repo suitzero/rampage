@@ -400,111 +400,110 @@ class Monster {
     }
 
     takeDamage(amount) {
-        if (this.invulnerableTime > 0) return; // Already invulnerable, no damage, no sound
+        if (this.invulnerableTime > 0 || this.isDefeated) return;
 
         this.currentHealth -= amount;
-        playSound(sfxMonsterHit); // Play monster HIT sound
+        playSound(sfxMonsterHit);
 
-        console.log(`Monster (color: ${this.color}) took ${amount} damage, health: ${this.currentHealth}`);
         if (this.currentHealth <= 0) {
             this.currentHealth = 0;
-            this.isDefeated = true; // Add a flag for defeat
-            console.log(`Monster (color: ${this.color}) has been defeated!`);
-            // For now, defeated monster will just stop moving or disappear (handled in update/draw)
+            this.isDefeated = true;
+            this.setCurrentAnimation('defeated');
+            console.log(`Monster (color: ${this.color}) has been defeated! Score: ${score}`);
+        } else {
+            if (!this.isPunching) {
+                this.setCurrentAnimation('hit');
+            }
+            this.invulnerableTime = this.invulnerabilityDuration;
         }
-        this.invulnerableTime = this.invulnerabilityDuration; // Start invulnerability
     }
 
     update(current_key_state) {
+        // 1. Handle Defeated State
         if (this.isDefeated) {
-            // If using sprites, could switch to a "defeated" animation/frame here if not handled by draw()
-            return;
+            this.setCurrentAnimation('defeated');
+            this.updateAnimationFrame(); // Update frame for defeated pose/animation
+            return; // No other logic if defeated
         }
 
+        // 2. Handle Invulnerability / 'hit' animation state
+        let wasHitAndRecoveredThisFrame = false;
         if (this.invulnerableTime > 0) {
             this.invulnerableTime--;
+            if (this.currentAnimation === 'hit' && this.invulnerableTime === 0) {
+                wasHitAndRecoveredThisFrame = true;
+            }
         }
 
-        // --- Handle Punching State ---
+        // 3. Handle Punching State & Animation
         if (this.isPunching) {
+            if (this.currentAnimation !== 'hit') { // 'hit' can interrupt 'punch' visual
+                 this.setCurrentAnimation('punch');
+            }
             this.punchTimer++;
             if (this.punchTimer >= this.punchDuration) {
                 this.isPunching = false;
                 this.punchTimer = 0;
-            }
-        }
-
-        // --- Movement and Animation State Logic (excluding punch state for now) ---
-        // Assume not moving initially for this frame
-        this.isMoving = false;
-
-        // Horizontal movement & Facing Direction
-        if (!this.isPunching) { // Don't move if in middle of a punch animation/action
-            if (current_key_state[this.key_config.left] && this.x > 0) {
-                this.x -= this.speed;
-                this.facingDirection = 'left';
-                this.isMoving = true;
-            }
-            if (current_key_state[this.key_config.right] && this.x < canvas.width - this.size) {
-                // canvas.width - this.frameWidth might be more accurate if sprite is drawn at frameWidth
-                this.x += this.speed;
-                this.facingDirection = 'right';
-                this.isMoving = true;
-            }
-        }
-
-        // --- Climbing Logic (existing, might need to integrate isMoving/animation for climb) ---
-        this.isClimbing = false; // Reset before check
-        let collidingBuilding = null;
-         for (const building of buildings) {
-            if (!building.isDestroyed() && checkCollision(this, building)) {
-                if (this.y + this.size > building.y && this.y < building.y + building.height) {
-                    this.isClimbing = true;
-                    collidingBuilding = building;
-                    break;
+                if (this.currentAnimation === 'punch') {
+                    this.setCurrentAnimation('idle');
                 }
             }
         }
 
-        if (this.isClimbing && collidingBuilding) {
-            this.isMoving = true; // Consider climbing as a form of movement for animation
-            if (!this.isPunching) { // Allow vertical climb movement only if not punching
-                if (current_key_state[this.key_config.up] && this.y > 0) {
-                    this.y -= this.speed;
-                    if (this.y < collidingBuilding.y) this.y = collidingBuilding.y; // Snap to top
+        // 4. Determine Movement-Based Animation State
+        if (!this.isPunching || wasHitAndRecoveredThisFrame) {
+            if (this.currentAnimation !== 'hit' || wasHitAndRecoveredThisFrame) {
+                this.isMoving = false;
+
+                // Horizontal Movement
+                if (current_key_state[this.key_config.left] && this.x > 0) {
+                    this.x -= this.speed; this.facingDirection = 'left'; this.isMoving = true;
                 }
-                if (current_key_state[this.key_config.down] && this.y < canvas.height - this.size) {
-                    this.y += this.speed;
-                    if (this.y + this.size > collidingBuilding.y + collidingBuilding.height) { // Snap to bottom
-                        this.y = collidingBuilding.y + collidingBuilding.height - this.size;
+                if (current_key_state[this.key_config.right] && this.x < canvas.width - this.size) {
+                    this.x += this.speed; this.facingDirection = 'right'; this.isMoving = true;
+                }
+
+                // Vertical Movement & Climbing State
+                this.isClimbing = false;
+                let collidingBuilding = null;
+                for (const building of buildings) {
+                    if (!building.isDestroyed() && checkCollision(this, building) &&
+                        (this.y + this.size > building.y && this.y < building.y + building.height)) {
+                        this.isClimbing = true; collidingBuilding = building; break;
+                    }
+                }
+
+                if (this.isClimbing && collidingBuilding) {
+                    this.isMoving = true;
+                    this.setCurrentAnimation('climb');
+                    if (current_key_state[this.key_config.up] && this.y > 0) {
+                        this.y -= this.speed; if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
+                    }
+                    if (current_key_state[this.key_config.down] && this.y < canvas.height - this.size) {
+                        this.y += this.speed; if (this.y + this.size > collidingBuilding.y + collidingBuilding.height) this.y = collidingBuilding.y + collidingBuilding.height - this.size;
+                    }
+                } else { // Not climbing
+                    this.y += GRAVITY * 5;
+                    if (this.isMoving) {
+                        this.setCurrentAnimation('walk');
+                    } else {
+                        this.setCurrentAnimation('idle');
+                    }
+                }
+
+                // Boundary and Ground checks for Y
+                if (this.y < 0) this.y = 0;
+                if (this.y > canvas.height - this.size) {
+                    this.y = canvas.height - this.size;
+                    if (!this.isClimbing) {
+                        if (this.isMoving) this.setCurrentAnimation('walk');
+                        else this.setCurrentAnimation('idle');
                     }
                 }
             }
-        } else if (!this.isPunching) { // Apply gravity only if not climbing AND not punching
-            this.y += GRAVITY * 5;
         }
 
-        // --- Boundary Constraints for Y ---
-         if (this.y < 0) this.y = 0;
-         if (this.y > canvas.height - this.size) { // this.size for collision box
-            this.y = canvas.height - this.size;
-         }
-
-
-        // --- Animation Frame Update Logic ---
-        if (this.isPunching) {
-            // Placeholder for specific punch animation frame logic
-        } else if (this.isMoving) {
-            // Walking/Climbing animation
-            this.frameTimer++;
-            if (this.frameTimer >= this.frameInterval) {
-                this.frameTimer = 0;
-                this.currentFrame = (this.currentFrame + 1) % this.animationFrameCount; // Cycle through frames
-            }
-        } else {
-            // Idle animation: typically first frame or a short loop
-            this.currentFrame = 0; // Simple idle: show first frame
-        }
+        this.updateAnimationFrame();
     }
 
     punch() {
@@ -514,36 +513,22 @@ class Monster {
         playSound(sfxPunch);
         this.isPunching = true;     // Start punch state
         this.punchTimer = 0;        // Reset punch animation timer
+        this.setCurrentAnimation('punch');
 
-        console.log(`Monster (color: ${this.color}) punching attempt...`);
+        // console.log(`Monster (color: ${this.color}) punching attempt...`); // Less verbose
         let hitBuilding = false;
-        // --- Existing Building Punch Logic ---
         for (const building of buildings) {
             if (!building.isDestroyed() && checkCollision(this, building)) {
-                console.log(`Punch connected with building at x: ${building.x}`);
                 building.takeDamage(this.punchingPower);
                 hitBuilding = true;
-                // If monster can only damage one building per punch, uncomment break:
-                // break;
             }
         }
-        // --- End of Existing Building Punch Logic ---
-
-        // --- New AI Enemy Punch Logic ---
         let hitAIEnemy = false;
-        for (const aiEnemy of aiEnemies) { // Iterate through global aiEnemies array
+        for (const aiEnemy of aiEnemies) {
             if (!aiEnemy.isDestroyed() && checkCollision(this, aiEnemy)) {
-                console.log(`Punch connected with AIEnemy at x: ${aiEnemy.x}`);
-                aiEnemy.takeDamage(this.punchingPower); // Use monster's punchingPower
+                aiEnemy.takeDamage(this.punchingPower);
                 hitAIEnemy = true;
-                // Optional: If punch should only hit one AI enemy, uncomment break.
-                // break;
             }
-        }
-        // --- End of New AI Enemy Punch Logic ---
-
-        if (!hitBuilding && !hitAIEnemy) {
-            console.log("Punch missed or hit only already destroyed targets.");
         }
     }
 
@@ -659,7 +644,9 @@ class Projectile {
 
 // AIEnemy Class
 class AIEnemy {
-    constructor(x, y, initialWidth, initialHeight, color, speed, health, spriteSheet = null, frameWidth = 0, frameHeight = 0) {
+    constructor(x, y, initialWidth, initialHeight, color, speed, health,
+                spriteSheet = null, frameWidth = 0, frameHeight = 0,
+                animationFrameCount = 1, frameInterval = 20) { // Added animationFrameCount, frameInterval
         this.x = x;
         this.y = y;
         this.width = initialWidth;   // Collision box width
@@ -672,11 +659,15 @@ class AIEnemy {
         this.fireCooldown = 0;
         this.fireRate = 120;
 
-        // New sprite properties
         this.spriteSheet = spriteSheet;
-        this.frameWidth = frameWidth;     // Width of a single frame from the sheet
-        this.frameHeight = frameHeight;   // Height of a single frame from the sheet
-        this.currentFrame = 0;            // For basic animation, if any (e.g., first frame)
+        this.frameWidth = frameWidth;
+        this.frameHeight = frameHeight;
+        this.currentFrame = 0;
+
+        // --- New Animation Properties ---
+        this.animationFrameCount = animationFrameCount; // Total frames for its main animation (e.g., rotor)
+        this.frameTimer = 0;                            // Timer to control animation speed
+        this.frameInterval = frameInterval;             // Update frame every X game loops
     }
 
     draw(ctx) {
@@ -757,6 +748,9 @@ class AIEnemy {
             this.fireCooldown--;
         }
         // --- End of existing firing logic ---
+
+        // --- Call to update animation frame ---
+        this.updateAnimationFrame(); // Add this line
     }
 
     takeDamage(amount) {
@@ -771,6 +765,32 @@ class AIEnemy {
             playSound(sfxEnemyDestroyed); // Play AI ENEMY DESTRUCTION sound
         }
         // console.log("AIEnemy health:", this.currentHealth); // Original log can be kept if needed for debugging health changes
+    }
+
+    updateAnimationFrame() {
+        // Only animate if there's more than one frame defined for this AI Enemy
+        if (this.animationFrameCount <= 1) {
+            // If only one frame (or less), no animation progression needed.
+            // currentFrame will remain 0 (or its initial value).
+            return;
+        }
+
+        // Increment frame timer
+        this.frameTimer++;
+
+        // Check if it's time to advance to the next frame
+        if (this.frameTimer >= this.frameInterval) {
+            this.frameTimer = 0; // Reset timer
+
+            // Advance the frame
+            this.currentFrame++;
+
+            // If the animation loops (which is assumed for AIEnemy's single animation)
+            // and currentFrame exceeds frameCount, reset to 0.
+            if (this.currentFrame >= this.animationFrameCount) {
+                this.currentFrame = 0; // Loop back to the first frame
+            }
+        }
     }
 
     isDestroyed() {
@@ -1000,11 +1020,17 @@ function resetGame() {
     for (let i = 0; i < numberOfAIEnemies; i++) {
         const enemyX = 100 + i * (canvas.width / (numberOfAIEnemies + 1));
         const enemyY = 50 + (i % 2 === 0 ? 0 : 30);
+
+        // Define animation parameters for this AI Enemy type
+        const aiAnimationFrameCount = 4; // e.g., 4 frames for helicopter rotor
+        const aiFrameInterval = 5;     // Update frame every 5 game ticks for speed
+
         aiEnemies.push(new AIEnemy(
             enemyX, enemyY,
             60, 30, // initialWidth, initialHeight (collision box)
             'darkolivegreen', 2, 100, // color, speed, health
-            aiEnemySpriteSheet, AI_ENEMY_FRAME_WIDTH, AI_ENEMY_FRAME_HEIGHT // sprite info
+            aiEnemySpriteSheet, AI_ENEMY_FRAME_WIDTH, AI_ENEMY_FRAME_HEIGHT, // sprite info
+            aiAnimationFrameCount, aiFrameInterval // <<< NEW animation parameters
         ));
     }
 
@@ -1119,3 +1145,5 @@ function gameLoop() {
 
 // Start game loop
 gameLoop();
+
+[end of script.js]
