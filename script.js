@@ -15,6 +15,19 @@ const AI_ENEMY_FRAME_WIDTH = 60; // Placeholder
 const AI_ENEMY_FRAME_HEIGHT = 30; // Placeholder
 const PROJECTILE_FRAME_WIDTH = 10; // Placeholder
 const PROJECTILE_FRAME_HEIGHT = 10; // Placeholder
+const BUILDING_SPRITE_FRAME_WIDTH = 100; // Placeholder, actual width of one building state on sheet
+const BUILDING_SPRITE_FRAME_HEIGHT = 150; // Placeholder, actual height of one building state on sheet
+
+// Default Building Damage Frames Configuration
+const defaultBuildingDamageFrames = {
+    // sx, sy are top-left coords of the frame on the buildingSpriteSheet
+    // Assumes frames are laid out horizontally. Adjust sx/sy based on your sheet.
+    '100': { sx: 0 * BUILDING_SPRITE_FRAME_WIDTH, sy: 0 },   // Intact
+    '75':  { sx: 1 * BUILDING_SPRITE_FRAME_WIDTH, sy: 0 },   // Light damage
+    '50':  { sx: 2 * BUILDING_SPRITE_FRAME_WIDTH, sy: 0 },   // Medium damage
+    '25':  { sx: 3 * BUILDING_SPRITE_FRAME_WIDTH, sy: 0 },   // Heavy damage
+    '0':   { sx: 4 * BUILDING_SPRITE_FRAME_WIDTH, sy: 0 }    // Rubble/Destroyed
+};
 
 // Game State
 let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
@@ -25,8 +38,9 @@ let score = 0;
 // --- Sprite Sheet Setup ---
 let monster1SpriteSheet = null;
 let monster2SpriteSheet = null;
-let aiEnemySpriteSheet = null;    // New
-let projectileSpriteSheet = null; // New
+let aiEnemySpriteSheet = null;
+let projectileSpriteSheet = null;
+let buildingSpriteSheet = null;    // New
 // Add more for other entities (AI, effects) if needed later
 
 // Function to load a sprite sheet image
@@ -106,8 +120,9 @@ async function loadSound(url) {
 const spriteSheetFiles = {
     monster1: 'img/monster1_sprites.png',
     monster2: 'img/monster2_sprites.png',
-    aiEnemy: 'img/ai_helicopter.png',     // New
-    projectile: 'img/projectile_bullet.png' // New
+    aiEnemy: 'img/ai_helicopter.png',
+    projectile: 'img/projectile_bullet.png',
+    building: 'img/building_sprites.png' // New
 };
 
 async function initGraphics() {
@@ -117,13 +132,15 @@ async function initGraphics() {
         [
             monster1SpriteSheet,
             monster2SpriteSheet,
-            aiEnemySpriteSheet,     // Add this to destructuring assignment
-            projectileSpriteSheet   // Add this to destructuring assignment
+            aiEnemySpriteSheet,
+            projectileSpriteSheet,
+            buildingSpriteSheet   // Add this to destructuring assignment
         ] = await Promise.all([
             loadSpriteSheet(spriteSheetFiles.monster1),
             loadSpriteSheet(spriteSheetFiles.monster2),
-            loadSpriteSheet(spriteSheetFiles.aiEnemy),     // Load AI enemy sprite
-            loadSpriteSheet(spriteSheetFiles.projectile)   // Load projectile sprite
+            loadSpriteSheet(spriteSheetFiles.aiEnemy),
+            loadSpriteSheet(spriteSheetFiles.projectile),
+            loadSpriteSheet(spriteSheetFiles.building)    // Load building sprite
         ]);
         console.log("All sprite sheets attempted to load.");
 
@@ -136,6 +153,8 @@ async function initGraphics() {
         else console.warn("AI Enemy sprite sheet failed to load.");
         if (projectileSpriteSheet) console.log("Projectile sprite sheet ready.");
         else console.warn("Projectile sprite sheet failed to load.");
+        if (buildingSpriteSheet) console.log("Building sprite sheet ready."); // New log
+        else console.warn("Building sprite sheet failed to load.");
 
     } catch (error) {
         console.error("An error occurred during parallel sprite sheet loading:", error);
@@ -800,39 +819,103 @@ class AIEnemy {
 
 // Building Class
 class Building {
-    constructor(x, y, width, height, initialHealth = 100) {
+    constructor(x, y, width, height, initialHealth = 100,
+                spriteSheet = null, frameWidth = 0, frameHeight = 0, damageFramesConfig = null) {
         this.x = x;
         this.y = y;
-        this.width = width;
-        this.height = height;
+        this.width = width;           // Collision box width
+        this.height = height;         // Collision box height
         this.initialHealth = initialHealth;
         this.currentHealth = initialHealth;
-        this.color = 'gray'; // Default color for an intact building
-        this.destroyedColor = '#555'; // Color when destroyed
-        this.damageColor = 'orange'; // Color when damaged
+        // this.color = 'gray'; // Will be replaced by sprite logic mostly
+        // this.destroyedColor = '#555';
+        // this.damageColor = 'orange';
+
+        // New Sprite Properties
+        this.spriteSheet = spriteSheet;
+        this.frameWidth = frameWidth;       // Width of a single building state frame/sprite
+        this.frameHeight = frameHeight;     // Height of a single building state frame/sprite
+
+        this.damageFramesConfig = damageFramesConfig || {
+            '100': { sx: 0, sy: 0 },
+            '0':   { sx: 0, sy: 0 }
+        };
     }
 
     draw(ctx) {
-        let currentColor = this.color;
-        if (this.currentHealth < this.initialHealth && this.currentHealth > 0) {
-            // Optional: Show damage visually, e.g., by changing color or drawing cracks
-            // For simplicity, let's show a different color if damaged but not destroyed
-            const healthPercentage = this.currentHealth / this.initialHealth;
-            if (healthPercentage < 0.3) {
-                currentColor = '#8B0000'; // Darker red for heavily damaged
-            } else if (healthPercentage < 0.7) {
-                currentColor = this.damageColor; // Orange for moderately damaged
+        if (this.spriteSheet && this.frameWidth > 0 && this.frameHeight > 0 && this.damageFramesConfig) {
+            let sourceX = 0;
+            let sourceY = 0;
+
+            const healthPercentage = (this.currentHealth / this.initialHealth) * 100;
+            let chosenFrameKey = '0';
+
+            const sortedNumericThresholds = Object.keys(this.damageFramesConfig)
+                                               .map(Number)
+                                               .sort((a, b) => a - b); // Sort ascending: [0, 25, 50, 75, 100]
+
+            if (sortedNumericThresholds.length > 0) {
+                chosenFrameKey = String(sortedNumericThresholds[sortedNumericThresholds.length - 1]); // Default to highest (e.g. '100')
+                for (const threshold of sortedNumericThresholds) {
+                    if (healthPercentage <= threshold) {
+                        chosenFrameKey = String(threshold);
+                        break;
+                    }
+                }
             }
-        } else if (this.isDestroyed()) {
-            currentColor = this.destroyedColor;
+
+            const frameInfo = this.damageFramesConfig[chosenFrameKey];
+            if (frameInfo) {
+                sourceX = frameInfo.sx;
+                sourceY = frameInfo.sy;
+            } else {
+                const fallbackFrameConf = this.damageFramesConfig['100'] || this.damageFramesConfig['0'] || this.damageFramesConfig[Object.keys(this.damageFramesConfig)[0]];
+                if(fallbackFrameConf){
+                    sourceX = fallbackFrameConf.sx;
+                    sourceY = fallbackFrameConf.sy;
+                }
+            }
+
+            ctx.drawImage(
+                this.spriteSheet,
+                sourceX, sourceY,
+                this.frameWidth, this.frameHeight,
+                this.x, this.y,
+                this.frameWidth, this.frameHeight
+            );
+
+        } else {
+            // Fallback to drawing a colored rectangle
+            let color = 'grey';
+            const healthPercent = this.currentHealth / this.initialHealth;
+            if (this.isDestroyed()) {
+                color = '#555';
+            } else if (healthPercent < 0.3) {
+                color = '#A52A2A';
+            } else if (healthPercent < 0.7) {
+                color = '#D2B48C';
+            }
+            ctx.fillStyle = color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
         }
 
-        ctx.fillStyle = currentColor;
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+        if (!this.isDestroyed()) {
+            const healthBarWidth = this.width;
+            const healthBarHeight = 5;
+            const healthBarX = this.x;
+            const healthBarY = this.y - healthBarHeight - 3;
 
-        // Optional: Draw health bar or damage state
-        ctx.fillStyle = 'red';
-        ctx.fillRect(this.x, this.y - 10, this.width * (this.currentHealth / this.initialHealth), 5);
+            ctx.fillStyle = 'grey';
+            ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+            const currentHealthPercentage = this.currentHealth / this.initialHealth;
+            let healthBarColor = 'green';
+            if (currentHealthPercentage < 0.3) healthBarColor = 'red';
+            else if (currentHealthPercentage < 0.6) healthBarColor = 'orange';
+
+            ctx.fillStyle = healthBarColor;
+            ctx.fillRect(healthBarX, healthBarY, healthBarWidth * currentHealthPercentage, healthBarHeight);
+        }
     }
 
     takeDamage(amount) {
@@ -1006,12 +1089,45 @@ function resetGame() {
 
     // 2. Reset Buildings
     buildings.length = 0; // Clear current buildings
-    const buildingWidth = 120;
-    let b1h = 400; buildings.push(new Building(150, canvas.height - b1h, buildingWidth, b1h, 200));
-    let b2h = 550; buildings.push(new Building(320, canvas.height - b2h, buildingWidth, b2h, 300));
-    let b3h = 450; buildings.push(new Building(490, canvas.height - b3h, buildingWidth, b3h, 250));
-    if (660 + buildingWidth <= canvas.width) {
-        let b4h = 500; buildings.push(new Building(660, canvas.height - b4h, buildingWidth, b4h, 280));
+    const buildingCollisionWidth = 120;
+
+    // Building 1
+    let b1h_collision = 400;
+    buildings.push(new Building(
+        150, canvas.height - b1h_collision, // x, y
+        buildingCollisionWidth, b1h_collision, // collision width, collision height
+        200, // initialHealth
+        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT, // sprite sheet and visual frame dimensions
+        defaultBuildingDamageFrames // damage states config
+    ));
+    // Building 2
+    let b2h_collision = 550;
+    buildings.push(new Building(
+        320, canvas.height - b2h_collision,
+        buildingCollisionWidth, b2h_collision,
+        300,
+        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
+        defaultBuildingDamageFrames
+    ));
+    // Building 3
+    let b3h_collision = 450;
+    buildings.push(new Building(
+        490, canvas.height - b3h_collision,
+        buildingCollisionWidth, b3h_collision,
+        250,
+        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
+        defaultBuildingDamageFrames
+    ));
+    // Building 4 (optional)
+    if (660 + buildingCollisionWidth <= canvas.width) {
+        let b4h_collision = 500;
+        buildings.push(new Building(
+            660, canvas.height - b4h_collision,
+            buildingCollisionWidth, b4h_collision,
+            280,
+            buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
+            defaultBuildingDamageFrames
+        ));
     }
 
     // 3. Reset AI Enemies
