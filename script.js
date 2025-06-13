@@ -526,29 +526,45 @@ class Monster {
     }
 
     punch() {
-        // Optional: Prevent starting a new punch if already in a punch animation/cooldown
-        // if (this.isPunching || this.punchTimer > 0 ) return;
+        // Guard to prevent re-punching during an active punch animation/action
+        if (this.isPunching && this.punchTimer < this.punchDuration) {
+           return;
+        }
 
         playSound(sfxPunch);
-        this.isPunching = true;     // Start punch state
-        this.punchTimer = 0;        // Reset punch animation timer
+        this.isPunching = true;
+        this.punchTimer = 0;
         this.setCurrentAnimation('punch');
 
-        // console.log(`Monster (color: ${this.color}) punching attempt...`); // Less verbose
+        console.log(`[LOG] Monster ${this.color} PUNCH action. PunchingPower: ${this.punchingPower}`);
+
         let hitBuilding = false;
         for (const building of buildings) {
             if (!building.isDestroyed() && checkCollision(this, building)) {
+                // --- Detailed Log for Building Hit ---
+                console.log(`[LOG] Monster ${this.color} attempting to damage Building.`);
+                console.log(`[LOG]   Building Initial Health: ${building.initialHealth}, Current Health (before): ${building.currentHealth}`);
+                console.log(`[LOG]   Monster Punching Power: ${this.punchingPower}`);
+                // --- End Detailed Log ---
+
                 building.takeDamage(this.punchingPower);
                 hitBuilding = true;
             }
         }
+
         let hitAIEnemy = false;
         for (const aiEnemy of aiEnemies) {
             if (!aiEnemy.isDestroyed() && checkCollision(this, aiEnemy)) {
+                // Log for AI enemy hit (can be less verbose for this bug)
+                // console.log(`[LOG] Monster ${this.color} hitting AIEnemy. AI Health (before): ${aiEnemy.currentHealth}`);
                 aiEnemy.takeDamage(this.punchingPower);
                 hitAIEnemy = true;
             }
         }
+
+        // if (!hitBuilding && !hitAIEnemy) {
+        //     console.log(`[LOG] Monster ${this.color} punch missed or hit only already destroyed targets.`);
+        // }
     }
 
     setCurrentAnimation(newAnimationName) {
@@ -919,41 +935,54 @@ class Building {
     }
 
     takeDamage(amount) {
-        if (this.isDestroyed()) return; // Already destroyed
+        // --- Ensure numeric values ---
+        const numericAmount = Number(amount);
+        if (isNaN(numericAmount)) {
+            console.error(`[FIX][Building.takeDamage] Invalid damage amount received: ${amount}. Aborting damage.`);
+            return;
+        }
+        if (numericAmount <= 0) { // Also ignore 0 or negative damage
+            // console.log(`[LOG][Building.takeDamage] Non-positive damage amount received: ${numericAmount}. No damage taken.`);
+            return;
+        }
 
-        this.currentHealth -= amount;
+        // Ensure currentHealth is a number before proceeding.
+        this.currentHealth = Number(this.currentHealth);
+        if (isNaN(this.currentHealth)) {
+            console.error(`[FIX][Building.takeDamage] Building currentHealth was NaN for building at X:${this.x}. Resetting to initialHealth.`);
+            this.currentHealth = Number(this.initialHealth);
+             if (isNaN(this.currentHealth)) {
+                console.error(`[FIX][Building.takeDamage] Building initialHealth is also NaN for building at X:${this.x}. Cannot apply damage.`);
+                return;
+            }
+        }
+        // --- End Ensure numeric values ---
+
+        console.log(`[LOG][Building.takeDamage] Called. Building X: ${this.x}, Amount: ${numericAmount}, Current Health (at entry): ${this.currentHealth}`);
+
+        if (this.isDestroyed()) { // isDestroyed uses currentHealth, so it's after numeric conversion
+            console.log(`[LOG][Building.takeDamage]   Already destroyed. No action.`);
+            return;
+        }
+
+        console.log(`[LOG][Building.takeDamage]   Initial Health: ${this.initialHealth}, Current Health (before subtract): ${this.currentHealth}`);
+        this.currentHealth -= numericAmount;
+        console.log(`[LOG][Building.takeDamage]   Current Health (after subtract): ${this.currentHealth}`);
+
         if (this.currentHealth <= 0) {
-            this.currentHealth = 0;
-            // Award points for destroying the building
-            score += 100; // Add 100 points to the global score
-            console.log("Building destroyed! Score: " + score);
-            playSound(sfxBuildingDestroyed); // Play building DESTRUCTION sound
+            this.currentHealth = 0; // Clamp health at 0
+            score += 100;
+            console.log(`[LOG][Building.takeDamage]   DESTROYED by this hit! Score: ${score}. Final Health: ${this.currentHealth}`);
+            playSound(sfxBuildingDestroyed);
         } else {
-            // If not destroyed, but took damage
-            playSound(sfxBuildingDamage); // Play building DAMAGE sound
+            console.log(`[LOG][Building.takeDamage]   Damaged, not destroyed. Current Health: ${this.currentHealth}`);
+            playSound(sfxBuildingDamage);
         }
     }
 
     isDestroyed() {
         return this.currentHealth <= 0;
     }
-}
-
-// Collision detection function (for rectangles)
-function getRect(obj) {
-    const width = obj.width || obj.size;
-    const height = obj.height || obj.size;
-    return { x: obj.x, y: obj.y, width: width, height: height };
-}
-
-function checkCollision(objA, objB) {
-    const rectA = getRect(objA);
-    const rectB = getRect(objB);
-
-    return rectA.x < rectB.x + rectB.width &&
-           rectA.x + rectA.width > rectB.x &&
-           rectA.y < rectB.y + rectB.height &&
-           rectA.y + rectA.height > rectB.y;
 }
 
 /**
@@ -1473,5 +1502,7 @@ function gameLoop() {
 
 // Start game loop
 gameLoop();
+
+[end of script.js]
 
 [end of script.js]
