@@ -956,6 +956,218 @@ function checkCollision(objA, objB) {
            rectA.y + rectA.height > rectB.y;
 }
 
+/**
+ * Retrieves the current comprehensive state of the game.
+ * This function is intended for use by external controllers or AI (e.g., an LLM)
+ * to get a snapshot of all relevant game entities and statuses.
+ *
+ * @returns {Object} An object containing the game state.
+ * Example structure:
+ * {
+ *   timestamp: Number, // Current timestamp
+ *   overallState: String, // 'playing' or 'gameOver'
+ *   score: Number,
+ *   canvas: { width: Number, height: Number },
+ *   monsters: [
+ *     { id: String, x: Number, y: Number, size: Number, currentHealth: Number, ... },
+ *     // ... (monster2 data)
+ *   ],
+ *   buildings: [
+ *     { x: Number, y: Number, width: Number, height: Number, currentHealth: Number, spriteFrameKey: String, ... },
+ *     // ... (other buildings)
+ *   ],
+ *   aiEnemies: [
+ *     { x: Number, y: Number, width: Number, height: Number, currentHealth: Number, ... },
+ *     // ... (other AI enemies)
+ *   ],
+ *   enemyProjectiles: [
+ *     { x: Number, y: Number, size: Number, ... },
+ *     // ... (other projectiles)
+ *   ]
+ * }
+ */
+function getGameState() {
+    const gameStateData = {
+        timestamp: Date.now(),
+        overallState: gameState, // 'playing', 'gameOver'
+        score: score,
+        canvas: {
+            width: canvas.width,
+            height: canvas.height
+        },
+        monsters: [],
+        buildings: [],
+        aiEnemies: [],
+        enemyProjectiles: []
+    };
+
+    // Helper to get common monster data
+    const getMonsterData = (m) => {
+        if (!m) return null;
+        return {
+            id: (m === monster) ? 'monster1' : 'monster2',
+            x: m.x,
+            y: m.y,
+            size: m.size, // Collision box size
+            currentHealth: m.currentHealth,
+            initialHealth: m.initialHealth,
+            isDefeated: m.isDefeated,
+            isClimbing: m.isClimbing,
+            isPunching: m.isPunching,
+            facingDirection: m.facingDirection,
+            currentAnimation: m.currentAnimation,
+        };
+    };
+
+    if (typeof monster !== 'undefined' && monster) gameStateData.monsters.push(getMonsterData(monster));
+    if (typeof monster2 !== 'undefined' && monster2) gameStateData.monsters.push(getMonsterData(monster2));
+
+    if (typeof buildings !== 'undefined') {
+        buildings.forEach(b => {
+            let chosenFrameKey = '0';
+            if (b.damageFramesConfig) {
+                 const healthPercentage = (b.currentHealth / b.initialHealth) * 100;
+                 const sortedNumericThresholds = Object.keys(b.damageFramesConfig)
+                                           .map(Number)
+                                           .sort((a, b) => a - b);
+                if (sortedNumericThresholds.length > 0) {
+                    chosenFrameKey = String(sortedNumericThresholds[sortedNumericThresholds.length - 1]);
+                    for (const threshold of sortedNumericThresholds) {
+                        if (healthPercentage <= threshold) {
+                            chosenFrameKey = String(threshold);
+                            break;
+                        }
+                    }
+                }
+            }
+            const frameInfo = b.damageFramesConfig ? b.damageFramesConfig[chosenFrameKey] : null;
+
+            gameStateData.buildings.push({
+                x: b.x,
+                y: b.y,
+                width: b.width,
+                height: b.height,
+                currentHealth: b.currentHealth,
+                initialHealth: b.initialHealth,
+                isDestroyed: b.isDestroyed(),
+                spriteFrameKey: chosenFrameKey,
+                spriteSourceX: frameInfo ? frameInfo.sx : null,
+                spriteSourceY: frameInfo ? frameInfo.sy : null,
+            });
+        });
+    }
+
+    if (typeof aiEnemies !== 'undefined') {
+        aiEnemies.forEach(ai => {
+            gameStateData.aiEnemies.push({
+                x: ai.x,
+                y: ai.y,
+                width: ai.width,
+                height: ai.height,
+                currentHealth: ai.currentHealth,
+                initialHealth: ai.initialHealth,
+                isDestroyed: ai.isDestroyed(),
+                direction: ai.direction,
+            });
+        });
+    }
+
+    if (typeof enemyProjectiles !== 'undefined') {
+        enemyProjectiles.forEach(p => {
+            gameStateData.enemyProjectiles.push({
+                x: p.x,
+                y: p.y,
+                size: p.size,
+            });
+        });
+    }
+
+    return gameStateData;
+}
+
+/**
+ * Allows external control of player monster actions.
+ * This function simulates player input for specified monsters.
+ *
+ * @param {String} monsterId - The ID of the monster to control ('monster1' or 'monster2').
+ * @param {String} actionName - The action to perform. Valid actions:
+ *   'left', 'right', 'up', 'down' (for movement).
+ *   'punch' (for attacking).
+ * @param {String} eventType - The type of event to simulate:
+ *   'press': Simulates a key being pressed down (for movement actions, continues until 'release').
+ *            For 'punch', 'press' acts as a single trigger.
+ *   'release': Simulates a key being released (for movement actions, stops continuous movement).
+ *              Not typically used for 'punch'.
+ *   'trigger': For one-shot actions like 'punch'. Effectively same as 'press' for 'punch'.
+ *
+ * @example
+ * // Make monster1 start moving left
+ * executeMonsterAction('monster1', 'left', 'press');
+ *
+ * // Make monster1 stop moving left
+ * executeMonsterAction('monster1', 'left', 'release');
+ *
+ * // Make monster2 punch
+ * executeMonsterAction('monster2', 'punch', 'trigger');
+ */
+// Function to allow external control of monster actions
+function executeMonsterAction(monsterId, actionName, eventType) {
+    let targetMonster = null;
+    let keyStateObject = null;
+    let keyConfig = null;
+
+    if (monsterId === 'monster1' && typeof monster !== 'undefined') {
+        targetMonster = monster;
+        keyStateObject = keys; // Global 'keys' for player 1
+        keyConfig = monster1_key_config; // Global config for player 1 keys
+    } else if (monsterId === 'monster2' && typeof monster2 !== 'undefined') {
+        targetMonster = monster2;
+        keyStateObject = keys2; // Global 'keys2' for player 2
+        keyConfig = monster2_key_config; // Global config for player 2 keys
+    } else {
+        console.warn(`executeMonsterAction: Invalid monsterId "${monsterId}" or monster not defined.`);
+        return;
+    }
+
+    if (!targetMonster || !keyStateObject || !keyConfig) {
+        console.warn(`executeMonsterAction: Target monster or its key configurations are not properly set up for ${monsterId}.`);
+        return;
+    }
+
+    // console.log(`Executing action for ${monsterId}: ${actionName} (${eventType})`);
+
+    switch (actionName) {
+        case 'left':
+            keyStateObject[keyConfig.left] = (eventType === 'press');
+            if (eventType === 'release') keyStateObject[keyConfig.left] = false;
+            break;
+        case 'right':
+            keyStateObject[keyConfig.right] = (eventType === 'press');
+            if (eventType === 'release') keyStateObject[keyConfig.right] = false;
+            break;
+        case 'up':
+            keyStateObject[keyConfig.up] = (eventType === 'press');
+            if (eventType === 'release') keyStateObject[keyConfig.up] = false;
+            break;
+        case 'down':
+            keyStateObject[keyConfig.down] = (eventType === 'press');
+            if (eventType === 'release') keyStateObject[keyConfig.down] = false;
+            break;
+        case 'punch':
+            if (eventType === 'trigger' || eventType === 'press') {
+                if (targetMonster.punch_key_code) {
+                     targetMonster.punch();
+                } else {
+                    console.warn(`executeMonsterAction: ${monsterId} does not have punch_key_code configured for direct punch method.`);
+                }
+            }
+            break;
+        default:
+            console.warn(`executeMonsterAction: Unknown actionName "${actionName}"`);
+            return;
+    }
+}
+
 // Keyboard input state for player 1
 const keys = {
     ArrowUp: false,
