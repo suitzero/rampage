@@ -1,6 +1,11 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+const mainMenu = document.getElementById('mainMenu');
+const playAloneBtn = document.getElementById('playAloneBtn');
+const playWithAiBtn = document.getElementById('playWithAiBtn');
+let gameMode = null; // To be set to 'solo' or 'vsAI'
+
 // Set canvas dimensions
 canvas.width = 800;  // Keep width or adjust as preferred
 canvas.height = 700; // Increase height for more vertical space
@@ -30,7 +35,7 @@ const defaultBuildingDamageFrames = {
 };
 
 // Game State
-let gameState = 'playing'; // Possible states: 'playing', 'gameOver'
+let gameState = 'menu'; // Possible states: 'menu', 'playing', 'gameOver'
 
 // Score
 let score = 0;
@@ -516,190 +521,179 @@ const monster1_punch_key = 'Space';
 const monster2_key_config = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' };
 const monster2_punch_key = 'Enter';
 
-const monster = new Monster(
-    50,
-    canvas.height - INITIAL_MONSTER_SIZE,
-    INITIAL_MONSTER_SIZE, 'purple', 5,
-    monster1_key_config, monster1_punch_key,
-    monster1SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
-);
+let monster = null;
+let monster2 = null;
 
-const monster2 = new Monster(
-    canvas.width - INITIAL_MONSTER_SIZE - 50,
-    canvas.height - INITIAL_MONSTER_SIZE,
-    INITIAL_MONSTER_SIZE, 'red', 5,
-    monster2_key_config, monster2_punch_key,
-    monster2SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
-);
-
-const buildings = [];
+let buildings = []; // Changed from const to let, though it's an array and could be const if only contents change.
 const buildingCollisionWidth = 120;
 
-buildings.length = 0;
-let b1h_collision = 400;
-buildings.push(new Building(
-    150, canvas.height - b1h_collision,
-    buildingCollisionWidth, b1h_collision,
-    200,
-    buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-    defaultBuildingDamageFrames
-));
-let b2h_collision = 550;
-buildings.push(new Building(
-    320, canvas.height - b2h_collision,
-    buildingCollisionWidth, b2h_collision,
-    300,
-    buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-    defaultBuildingDamageFrames
-));
-let b3h_collision = 450;
-buildings.push(new Building(
-    490, canvas.height - b3h_collision,
-    buildingCollisionWidth, b3h_collision,
-    250,
-    buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-    defaultBuildingDamageFrames
-));
-if (660 + buildingCollisionWidth <= canvas.width) {
-    let b4h_collision = 500;
-    buildings.push(new Building(
-        660, canvas.height - b4h_collision,
-        buildingCollisionWidth, b4h_collision,
-        280,
-        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-        defaultBuildingDamageFrames
-    ));
-}
+let aiEnemies = []; // Changed from const to let
+const numberOfAIEnemies = 2; // Assuming this is defined, keeping as const
+let enemyProjectiles = []; // Changed from const to let
 
-const aiEnemies = [];
-const numberOfAIEnemies = 2;
-for (let i = 0; i < numberOfAIEnemies; i++) {
-    const enemyX = 100 + i * (canvas.width / (numberOfAIEnemies + 1));
-    const enemyY = 50 + (i % 2 === 0 ? 0 : 30);
-    const aiAnimationFrameCount = 4;
-    const aiFrameInterval = 5;
-    aiEnemies.push(new AIEnemy(
-        enemyX, enemyY,
-        60, 30,
-        'darkolivegreen', 2, 100,
-        aiEnemySpriteSheet, AI_ENEMY_FRAME_WIDTH, AI_ENEMY_FRAME_HEIGHT,
-        aiAnimationFrameCount, aiFrameInterval
-    ));
-}
+function startGame(selectedMode) {
+    gameMode = selectedMode;
+    mainMenu.style.display = 'none';
+    canvas.style.display = 'block'; // Or use gameCanvas.style.display
 
-const enemyProjectiles = [];
+    score = 0;
+    gameState = 'playing';
 
-function resetGame() {
-    console.log("Resetting game...");
     monster = new Monster(
         50, canvas.height - INITIAL_MONSTER_SIZE, INITIAL_MONSTER_SIZE, 'purple', 5,
         monster1_key_config, monster1_punch_key,
         monster1SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
     );
-    monster2 = new Monster(
-        canvas.width - INITIAL_MONSTER_SIZE - 50, canvas.height - INITIAL_MONSTER_SIZE, INITIAL_MONSTER_SIZE, 'red', 5,
-        monster2_key_config, monster2_punch_key,
-        monster2SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
-    );
+
+    if (gameMode === 'solo') {
+        monster2 = null;
+    } else if (gameMode === 'vsAI') {
+        monster2 = new Monster(
+            canvas.width - INITIAL_MONSTER_SIZE - 50, canvas.height - INITIAL_MONSTER_SIZE,
+            INITIAL_MONSTER_SIZE, 'red', 5,
+            monster2_key_config, monster2_punch_key,
+            monster2SpriteSheet, MONSTER_FRAME_WIDTH, MONSTER_FRAME_HEIGHT
+        );
+        monster2.isAIControlled = true; // Set AI flag
+    }
+
+    resetGameInternalLogic();
+
+    console.log(`Starting game in mode: ${gameMode}. Score: ${score}`);
+    gameLoop();
+}
+
+playAloneBtn.addEventListener('click', () => {
+    startGame('solo');
+});
+
+playWithAiBtn.addEventListener('click', () => {
+    startGame('vsAI');
+});
+
+function resetGame() { // Called on 'R' press during gameOver
+    console.log("Returning to main menu...");
+    monster = null;
+    monster2 = null;
     buildings.length = 0;
-    const buildingCollisionWidth = 120;
+    aiEnemies.length = 0;
+    enemyProjectiles.length = 0;
+
+    score = 0;
+    gameState = 'menu';
+
+    canvas.style.display = 'none';
+    mainMenu.style.display = 'flex';
+}
+
+function resetGameInternalLogic() {
+    buildings.length = 0;
+    //const buildingCollisionWidth = 120; // Already global
     let b1h_collision = 400;
     buildings.push(new Building(
-        150, canvas.height - b1h_collision,
-        buildingCollisionWidth, b1h_collision,
-        200,
-        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-        defaultBuildingDamageFrames
+        150, canvas.height - b1h_collision, buildingCollisionWidth, b1h_collision, 200,
+        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT, defaultBuildingDamageFrames
     ));
     let b2h_collision = 550;
     buildings.push(new Building(
-        320, canvas.height - b2h_collision,
-        buildingCollisionWidth, b2h_collision,
-        300,
-        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-        defaultBuildingDamageFrames
+        320, canvas.height - b2h_collision, buildingCollisionWidth, b2h_collision, 300,
+        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT, defaultBuildingDamageFrames
     ));
     let b3h_collision = 450;
     buildings.push(new Building(
-        490, canvas.height - b3h_collision,
-        buildingCollisionWidth, b3h_collision,
-        250,
-        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-        defaultBuildingDamageFrames
+        490, canvas.height - b3h_collision, buildingCollisionWidth, b3h_collision, 250,
+        buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT, defaultBuildingDamageFrames
     ));
-    if (660 + buildingCollisionWidth <= canvas.width) {
+    if (canvas && 660 + buildingCollisionWidth <= canvas.width) {
         let b4h_collision = 500;
         buildings.push(new Building(
-            660, canvas.height - b4h_collision,
-            buildingCollisionWidth, b4h_collision,
-            280,
-            buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT,
-            defaultBuildingDamageFrames
+            660, canvas.height - b4h_collision, buildingCollisionWidth, b4h_collision, 280,
+            buildingSpriteSheet, BUILDING_SPRITE_FRAME_WIDTH, BUILDING_SPRITE_FRAME_HEIGHT, defaultBuildingDamageFrames
         ));
     }
+
     aiEnemies.length = 0;
-    const numberOfAIEnemies = 2;
+    //const numberOfAIEnemies = 2; // Already global
     for (let i = 0; i < numberOfAIEnemies; i++) {
         const enemyX = 100 + i * (canvas.width / (numberOfAIEnemies + 1));
         const enemyY = 50 + (i % 2 === 0 ? 0 : 30);
-        const aiAnimationFrameCount = 4;
-        const aiFrameInterval = 5;
         aiEnemies.push(new AIEnemy(
-            enemyX, enemyY,
-            60, 30,
-            'darkolivegreen', 2, 100,
-            aiEnemySpriteSheet, AI_ENEMY_FRAME_WIDTH, AI_ENEMY_FRAME_HEIGHT,
-            aiAnimationFrameCount, aiFrameInterval
+            enemyX, enemyY, 60, 30, 'darkolivegreen', 2, 100,
+            aiEnemySpriteSheet, AI_ENEMY_FRAME_WIDTH, AI_ENEMY_FRAME_HEIGHT, 4, 5
         ));
     }
     enemyProjectiles.length = 0;
-    score = 0;
-    console.log("Score reset to 0.");
-    gameState = 'playing';
-    console.log("Game reset complete. State: " + gameState);
+    console.log("Internal game elements reset.");
 }
 
+
 function gameLoop() {
+    if (gameState !== 'playing') return; // Stop loop if not in playing state
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (gameState === 'playing') {
-        monster.update(keys);
-        monster2.update(keys2);
-        if (monster.isDefeated && monster2.isDefeated) {
+    if (monster) monster.update(keys);
+    if (monster2) {
+        if (gameMode === 'vsAI' && monster2.isAIControlled) {
+            monster2.updateAI(monster, buildings); // AI makes decisions
+            monster2.update(); // Monster 2 updates its state based on aiAction (no keys needed)
+        } else if (gameMode !== 'solo') { // If monster2 is human controlled
+            monster2.update(keys2); // P2 human update
+        }
+    }
+
+    if (gameMode === 'solo') {
+        if (monster && monster.isDefeated) {
+            gameState = 'gameOver';
+            console.log("Game Over! Monster 1 is defeated.");
+        }
+    } else {
+        if (monster && monster.isDefeated && (!monster2 || monster2.isDefeated)) {
             gameState = 'gameOver';
             console.log("Game Over! Both monsters are defeated.");
         }
-        if (gameState === 'playing') {
-            for (let i = aiEnemies.length - 1; i >= 0; i--) {
-                const enemy = aiEnemies[i];
-                enemy.update();
-                if (enemy.isDestroyed()) {
-                    aiEnemies.splice(i, 1);
+    }
+
+    if (gameState === 'playing') { // Double check gameState as it might change above
+        for (let i = aiEnemies.length - 1; i >= 0; i--) {
+                    const enemy = aiEnemies[i];
+                    enemy.update();
+                    if (enemy.isDestroyed()) {
+                        aiEnemies.splice(i, 1);
+                    }
                 }
-            }
-            for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
-                const projectile = enemyProjectiles[i];
-                projectile.update();
-                if (!monster.isDefeated && checkCollision(monster, projectile)) {
-                    monster.takeDamage(projectile.damage);
-                    enemyProjectiles.splice(i, 1);
-                    continue;
+                for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+                    const projectile = enemyProjectiles[i];
+                    projectile.update();
+                    if (monster && !monster.isDefeated && checkCollision(monster, projectile)) {
+                        monster.takeDamage(projectile.damage);
+                        enemyProjectiles.splice(i, 1);
+                        continue;
+                    }
+                    if (monster2 && !monster2.isDefeated && checkCollision(monster2, projectile)) {
+                        monster2.takeDamage(projectile.damage);
+                        enemyProjectiles.splice(i, 1);
+                        continue;
+                    }
+                    if (projectile.y > canvas.height) {
+                        enemyProjectiles.splice(i, 1);
+                    }
                 }
-                if (!monster2.isDefeated && checkCollision(monster2, projectile)) {
-                    monster2.takeDamage(projectile.damage);
-                    enemyProjectiles.splice(i, 1);
-                    continue;
-                }
-                if (projectile.y > canvas.height) {
-                    enemyProjectiles.splice(i, 1);
                 }
             }
         }
-    }
+    } // End of main 'playing' logic for updates
+
+    // Drawing logic (should happen regardless of whether game just ended in this frame)
     for (const building of buildings) {
         building.draw(ctx);
     }
-    if (gameState === 'playing') {
+
+    if (monster) monster.draw(ctx);
+    if (monster2) monster2.draw(ctx);
+
+    // Draw AI enemies and projectiles only if playing
+    if (gameState === 'playing' || gameState === 'gameOver') { // Also draw if game just ended
         for (const enemy of aiEnemies) {
             enemy.draw(ctx);
         }
@@ -707,15 +701,14 @@ function gameLoop() {
             projectile.draw(ctx);
         }
     }
-    monster.draw(ctx);
-    monster2.draw(ctx);
+
     if (gameState === 'playing') {
         ctx.font = '20px Arial';
         ctx.fillStyle = 'white';
         ctx.textAlign = 'left';
         ctx.fillText('Score: ' + score, 10, 25);
     }
-    if (gameState === 'gameOver') {
+    if (gameState === 'gameOver') { // Moved this block up to ensure it's part of the main conditional drawing
         ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.font = '48px Arial';
@@ -729,6 +722,10 @@ function gameLoop() {
         ctx.textAlign = 'center';
         ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2 + 60);
     }
-    requestAnimationFrame(gameLoop);
+
+    // Only call requestAnimationFrame if the game is supposed to continue
+    if (gameState === 'playing') {
+        requestAnimationFrame(gameLoop);
+    }
 }
-gameLoop();
+// gameLoop(); // Removed initial call, startGame will call it.

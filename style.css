@@ -9,3 +9,49 @@ canvas {
     margin: auto;
     background-color: #fff;
 }
+
+#mainMenu {
+  width: 100vw;
+  height: 100vh;
+  background-image: url('background-image.png');
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: absolute; /* Or fixed, to ensure it covers everything */
+  top: 0;
+  left: 0;
+  z-index: 10; /* Ensure it's above other elements if any overlap */
+}
+
+#mainMenu h1 {
+  font-family: 'Arial', sans-serif; /* Consider a more retro font if available */
+  font-size: 5rem; /* Adjust size as needed */
+  color: white;
+  text-shadow: 3px 3px 0px black, -3px -3px 0px black, 3px -3px 0px black, -3px 3px 0px black; /* Basic outline */
+  margin-bottom: 40px; /* Space below title */
+}
+
+#mainMenu button {
+  font-family: 'Arial', sans-serif; /* Match title or choose another retro font */
+  font-size: 1.5rem; /* Adjust size */
+  color: white;
+  background-color: #333; /* Dark background */
+  border: 2px solid white;
+  padding: 10px 20px;
+  margin: 10px;
+  cursor: pointer;
+  min-width: 200px; /* Ensure buttons have a decent width */
+}
+
+#mainMenu button:hover {
+  background-color: #555; /* Lighter on hover */
+  border-color: #ddd;
+}
+
+#gameCanvas {
+  display: none; /* Initially hidden */
+}

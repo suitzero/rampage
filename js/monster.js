@@ -23,6 +23,10 @@ class Monster {
         this.currentFrame = 0;
         this.isMoving = false;
         this.facingDirection = 'right';
+
+        this.isAIControlled = false;
+        this.aiAction = { left: false, right: false, up: false, down: false, punch: false };
+
         this.animations = {
             'idle':     { rowIndex: 0, frameCount: 2, frameInterval: 20, loop: true },
             'walk':     { rowIndex: 1, frameCount: 4, frameInterval: 10, loop: true },
@@ -150,10 +154,22 @@ class Monster {
     }
 
     update(current_key_state) {
+        // const canvasWidth = (typeof canvas !== 'undefined') ? canvas.width : 800; // Fallback
+
         if (this.isDefeated) {
             this.setCurrentAnimation('defeated');
             this.updateAnimationFrame();
             return;
+        }
+
+        let PUNCH_ACTION_TRIGGERED = false;
+
+        if (this.isAIControlled) {
+            if (this.aiAction.punch) {
+                this.punch();
+                this.aiAction.punch = false;
+                PUNCH_ACTION_TRIGGERED = true;
+            }
         }
 
         if (this.invulnerableTime > 0) {
@@ -177,58 +193,88 @@ class Monster {
             }
         }
 
-        if (!this.isPunching && !(this.currentAnimation === 'hit' && this.invulnerableTime > 0)) {
+        if (!this.isPunching && !(this.currentAnimation === 'hit' && this.invulnerableTime > 0) && !PUNCH_ACTION_TRIGGERED) {
             this.isMoving = false;
-            if (current_key_state[this.key_config.left] && this.x > 0) {
-                this.x -= this.speed; this.facingDirection = 'left'; this.isMoving = true;
-            }
-            if (current_key_state[this.key_config.right] && this.x < canvas.width - this.size) {
-                this.x += this.speed; this.facingDirection = 'right'; this.isMoving = true;
+            if (this.isAIControlled) {
+                if (this.aiAction.left && this.x > 0) {
+                    this.x -= this.speed; this.facingDirection = 'left'; this.isMoving = true;
+                }
+                if (this.aiAction.right && this.x < ( (typeof canvas !== 'undefined' ? canvas.width : 800) - (this.frameWidth || this.size)) ) {
+                    this.x += this.speed; this.facingDirection = 'right'; this.isMoving = true;
+                }
+            } else if (current_key_state) { // Human player
+                if (current_key_state[this.key_config.left] && this.x > 0) {
+                    this.x -= this.speed; this.facingDirection = 'left'; this.isMoving = true;
+                }
+                if (current_key_state[this.key_config.right] && this.x < ( (typeof canvas !== 'undefined' ? canvas.width : 800) - (this.frameWidth || this.size)) ) {
+                    this.x += this.speed; this.facingDirection = 'right'; this.isMoving = true;
+                }
+                 // Human climbing logic would be here, using current_key_state for up/down
             }
 
             this.isClimbing = false;
-            let collidingBuilding = null;
-            for (const building of buildings) {
-                if (building.isDestroyed()) continue;
-                const collisionResult = checkCollision(this, building);
-                const verticalOverlapCheck = (this.y + this.size > building.y && this.y < building.y + building.height);
-                if (collisionResult && verticalOverlapCheck) {
-                    this.isClimbing = true;
-                    collidingBuilding = building;
-                    console.log(`[CLIMB_SUCCESS] Monster ${this.color} IS NOW CLIMBING building at X: ${building.x.toFixed(1)}`);
-                    break;
+            let collidingBuilding = null; // This needs access to the global `buildings` array or have it passed.
+            // Assuming `buildings` is global for now as per original structure.
+            if (typeof buildings !== 'undefined') {
+                for (const building of buildings) {
+                    if (building.isDestroyed()) continue;
+                    // Ensure checkCollision is available. It should be in utils.js and global.
+                    const collisionResult = (typeof checkCollision === 'function') ? checkCollision(this, building) : false;
+                    const verticalOverlapCheck = (this.y + (this.frameHeight || this.size) > building.y && this.y < building.y + building.height);
+                    if (collisionResult && verticalOverlapCheck) {
+                        this.isClimbing = true;
+                        collidingBuilding = building;
+                        // console.log(`[CLIMB_SUCCESS] Monster ${this.color} IS NOW CLIMBING building at X: ${building.x.toFixed(1)}`);
+                        break;
+                    }
                 }
             }
 
+
             if (this.isClimbing && collidingBuilding) {
-                this.isMoving = true;
+                this.isMoving = true; // AI currently doesn't set this.isClimbing
                 this.setCurrentAnimation('climb');
-                if (current_key_state[this.key_config.up] && this.y > 0) {
-                    this.y -= this.speed; if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
+                if (this.isAIControlled) {
+                    // Basic AI climbing movement if aiAction.up/down were implemented
+                    if (this.aiAction.up && this.y > 0) {
+                         this.y -= this.speed; if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
+                    }
+                    if (this.aiAction.down && this.y < ((typeof canvas !== 'undefined' ? canvas.height : 700) - (this.frameHeight || this.size))) {
+                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > collidingBuilding.y + collidingBuilding.height) this.y = collidingBuilding.y + collidingBuilding.height - (this.frameHeight || this.size);
+                    }
+                } else if (current_key_state) { // Human player
+                    if (current_key_state[this.key_config.up] && this.y > 0) {
+                        this.y -= this.speed; if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
+                    }
+                    if (current_key_state[this.key_config.down] && this.y < ((typeof canvas !== 'undefined' ? canvas.height : 700) - (this.frameHeight || this.size))) {
+                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > collidingBuilding.y + collidingBuilding.height) this.y = collidingBuilding.y + collidingBuilding.height - (this.frameHeight || this.size);
+                    }
                 }
-                if (current_key_state[this.key_config.down] && this.y < canvas.height - this.size) {
-                    this.y += this.speed; if (this.y + this.size > collidingBuilding.y + collidingBuilding.height) this.y = collidingBuilding.y + collidingBuilding.height - this.size;
-                }
-            } else {
+            } else { // Not climbing or no colliding building
+                // Apply gravity if not climbing. AI will also be affected by gravity.
                 this.y += GRAVITY * 5;
-                if (this.isMoving) {
+                if (this.isMoving) { // isMoving is set by directional input (AI or human)
                     this.setCurrentAnimation('walk');
                 } else {
                     this.setCurrentAnimation('idle');
                 }
             }
 
+            // Ground check - apply to both AI and human
             if (this.y < 0) {
                 this.y = 0;
             }
-            if (this.y > canvas.height - this.size) {
-                this.y = canvas.height - this.size;
-                if (!this.isClimbing) {
-                    if (this.isMoving) {
+            // Use canvas.height if available, otherwise fallback
+            const gameHeight = (typeof canvas !== 'undefined') ? canvas.height : 700;
+            if (this.y > gameHeight - (this.frameHeight || this.size)) {
+                this.y = gameHeight - (this.frameHeight || this.size);
+                if (!this.isClimbing) { // If on the ground and not climbing
+                    if (this.isMoving) { // isMoving is true if there was horizontal input
                         this.setCurrentAnimation('walk');
-                    } else {
+                    } else { // Not moving horizontally
                         this.setCurrentAnimation('idle');
                     }
+                } // If it was climbing and hit the ground, it might transition to idle/walk if no longer on building
                 }
             }
         } // End of main movement/climbing logic block
@@ -245,24 +291,67 @@ class Monster {
         this.punchTimer = 0;
         this.setCurrentAnimation('punch');
 
-        console.log(`[LOG] Monster ${this.color} PUNCH action. PunchingPower: ${this.punchingPower}`);
+        // PunchingPower needs to be defined for the monster, e.g. this.punchingPower = someValue; in constructor
+        // Assuming it's defined.
+        console.log(`[LOG] Monster ${this.color} PUNCH action. PunchingPower: ${this.punchingPower || 'N/A'}`);
 
-        let hitBuilding = false;
-        for (const building of buildings) {
-            if (!building.isDestroyed() && checkCollision(this, building)) {
-                console.log(`[LOG] Monster ${this.color} attempting to damage Building.`);
-                console.log(`[LOG]   Building Initial Health: ${building.initialHealth}, Current Health (before): ${building.currentHealth}`);
-                console.log(`[LOG]   Monster Punching Power: ${this.punchingPower}`);
-                building.takeDamage(this.punchingPower);
-                hitBuilding = true;
+
+        // Check collisions with buildings
+        if (typeof buildings !== 'undefined') {
+            for (const building of buildings) {
+                if (!building.isDestroyed() && (typeof checkCollision === 'function' && checkCollision(this, building))) {
+                    // console.log(`[LOG] Monster ${this.color} attempting to damage Building.`);
+                    // console.log(`[LOG]   Building Initial Health: ${building.initialHealth}, Current Health (before): ${building.currentHealth}`);
+                    // console.log(`[LOG]   Monster Punching Power: ${this.punchingPower}`);
+                    building.takeDamage(this.punchingPower || 20); // Provide default punch power if undefined
+                }
             }
         }
 
-        let hitAIEnemy = false;
-        for (const aiEnemy of aiEnemies) {
-            if (!aiEnemy.isDestroyed() && checkCollision(this, aiEnemy)) {
-                aiEnemy.takeDamage(this.punchingPower);
-                hitAIEnemy = true;
+        // Check collisions with other AI enemies (the flying ones)
+        if (typeof aiEnemies !== 'undefined') {
+            for (const aiEnemy of aiEnemies) {
+                if (!aiEnemy.isDestroyed() && (typeof checkCollision === 'function' && checkCollision(this, aiEnemy))) {
+                    aiEnemy.takeDamage(this.punchingPower || 20); // Provide default punch power
+                }
+            }
+        }
+        // Note: Collision with the *other monster* (player or AI) is not handled here.
+        // That would typically be a separate check in the game loop or a physics engine.
+    }
+
+    updateAI(targetMonster, buildingsContext) {
+        if (!this.isAIControlled || this.isDefeated) return;
+
+        this.aiAction.left = false;
+        this.aiAction.right = false;
+        this.aiAction.up = false;
+        this.aiAction.down = false;
+        this.aiAction.punch = false;
+
+        if (!targetMonster || targetMonster.isDefeated) {
+            return;
+        }
+
+        const horizontalDistance = targetMonster.x - this.x;
+        const verticalDistance = targetMonster.y - this.y;
+        const aggressionFactor = 0.03;
+
+        const buffer = this.speed;
+        if (horizontalDistance > buffer) {
+            this.aiAction.right = true;
+        } else if (horizontalDistance < -buffer) {
+            this.aiAction.left = true;
+        }
+
+        if (Math.abs(horizontalDistance) < (this.frameWidth || this.size) * 1.5 &&
+            Math.abs(verticalDistance) < (this.frameHeight || this.size)) {
+
+            const isFacingTarget = (this.facingDirection === 'right' && horizontalDistance > 0) ||
+                                 (this.facingDirection === 'left' && horizontalDistance < 0);
+
+            if (isFacingTarget && Math.random() < aggressionFactor) {
+                this.aiAction.punch = true;
             }
         }
     }
