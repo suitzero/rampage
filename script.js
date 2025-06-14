@@ -88,12 +88,6 @@ function initAudio() {
     return audioCtx; // Return the context
 }
 
-function checkCollision() {
-    // Placeholder for collision detection logic
-    // This function should return true if two objects collide
-    // For now, it returns false to avoid errors in the example
-    return false;
-}
 
 // Function to load a sound file
 async function loadSound(url) {
@@ -452,17 +446,18 @@ class Monster {
         }
 
         // 2. Handle Invulnerability / 'hit' animation state
-        let wasHitAndRecoveredThisFrame = false;
         if (this.invulnerableTime > 0) {
             this.invulnerableTime--;
+            // If 'hit' animation is active and invulnerability just ended,
+            // set flag and immediately transition to 'idle' to allow other actions.
             if (this.currentAnimation === 'hit' && this.invulnerableTime === 0) {
-                wasHitAndRecoveredThisFrame = true;
+                this.setCurrentAnimation('idle'); // <<< ***** ADDED/MODIFIED LINE *****
             }
         }
 
         // 3. Handle Punching State & Animation
         if (this.isPunching) {
-            if (this.currentAnimation !== 'hit') { // 'hit' can interrupt 'punch' visual
+            if (this.currentAnimation !== 'hit') { // 'hit' can interrupt 'punch' visual if damage taken while punching
                  this.setCurrentAnimation('punch');
             }
             this.punchTimer++;
@@ -476,11 +471,11 @@ class Monster {
         }
 
         // 4. Determine Movement-Based Animation State
-        if (!this.isPunching || wasHitAndRecoveredThisFrame) {
-            if (this.currentAnimation !== 'hit' || wasHitAndRecoveredThisFrame) {
-                this.isMoving = false;
+        if (!this.isPunching && !(this.currentAnimation === 'hit' && this.invulnerableTime > 0)) {
+            // This block is now entered if not punching AND not actively in 'hit' stun.
+            this.isMoving = false;
 
-                // Horizontal Movement
+            // Horizontal Movement
                 if (current_key_state[this.key_config.left] && this.x > 0) {
                     this.x -= this.speed; this.facingDirection = 'left'; this.isMoving = true;
                 }
@@ -489,14 +484,35 @@ class Monster {
                 }
 
                 // Vertical Movement & Climbing State
-                this.isClimbing = false;
+            this.isClimbing = false; // Reset before checks
                 let collidingBuilding = null;
+            // --- Add Temp Log Before Loop ---
+            // console.log(`[CLIMB_DEBUG] Monster ${this.color} - Pre-climb check. X: ${this.x.toFixed(1)}, Y: ${this.y.toFixed(1)}, Size: ${this.size}, CurrentAnim: ${this.currentAnimation}, IsPunching: ${this.isPunching}, InvulnerableTime: ${this.invulnerableTime}`);
+
                 for (const building of buildings) {
-                    if (!building.isDestroyed() && checkCollision(this, building) &&
-                        (this.y + this.size > building.y && this.y < building.y + building.height)) {
-                        this.isClimbing = true; collidingBuilding = building; break;
+                if (building.isDestroyed()) continue; // Skip destroyed buildings
+
+                const collisionResult = checkCollision(this, building);
+                const verticalOverlapCheck = (this.y + this.size > building.y && this.y < building.y + building.height);
+
+                // --- Add Temp Log Inside Loop ---
+                // if (this.color === 'purple') { // Log only for monster1 to reduce spam, or remove conditional
+                //     console.log(`[CLIMB_DEBUG] Checking building at X: ${building.x.toFixed(1)} Y: ${building.y.toFixed(1)} W: ${building.width} H: ${building.height}`);
+                //     console.log(`[CLIMB_DEBUG]   checkCollision: ${collisionResult}, verticalOverlap: ${verticalOverlapCheck}`);
+                //     console.log(`[CLIMB_DEBUG]   Monster Y: ${this.y.toFixed(1)}, Monster Bottom: ${(this.y + this.size).toFixed(1)}, Building Top: ${building.y.toFixed(1)}, Building Bottom: ${(building.y + building.height).toFixed(1)}`);
+                // }
+
+                if (collisionResult && verticalOverlapCheck) {
+                    this.isClimbing = true;
+                    collidingBuilding = building;
+                    // --- Add Temp Log on Successful Climb Condition Met ---
+                    console.log(`[CLIMB_SUCCESS] Monster ${this.color} IS NOW CLIMBING building at X: ${building.x.toFixed(1)}`);
+                    break;
                     }
                 }
+
+            // --- Add Temp Log After Loop ---
+            // console.log(`[CLIMB_DEBUG] Monster ${this.color} - Post-climb check. isClimbing: ${this.isClimbing}`);
 
                 if (this.isClimbing && collidingBuilding) {
                     this.isMoving = true;
@@ -1508,3 +1524,7 @@ function gameLoop() {
 
 // Start game loop
 gameLoop();
+
+[end of script.js]
+
+[end of script.js]
