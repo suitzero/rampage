@@ -481,10 +481,10 @@ class Monster {
                     else this.setCurrentAnimation('idle');
                 }
             }
-        }
+        } // End of main movement/climbing logic block
 
-        this.updateAnimationFrame();
-    }
+        this.updateAnimationFrame(); // Ensure this line is perfectly formed
+    } // End of update() method
 
     punch() {
         if (this.isPunching && this.punchTimer < this.punchDuration) {
