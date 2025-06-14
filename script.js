@@ -1524,7 +1524,3 @@ function gameLoop() {
 
 // Start game loop
 gameLoop();
-
-[end of script.js]
-
-[end of script.js]
