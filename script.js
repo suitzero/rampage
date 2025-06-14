@@ -473,17 +473,22 @@ class Monster {
                 }
             }
 
-            if (this.y < 0) this.y = 0;
+            if (this.y < 0) {
+                this.y = 0;
+            }
             if (this.y > canvas.height - this.size) {
                 this.y = canvas.height - this.size;
                 if (!this.isClimbing) {
-                    if (this.isMoving) this.setCurrentAnimation('walk');
-                    else this.setCurrentAnimation('idle');
+                    if (this.isMoving) {
+                        this.setCurrentAnimation('walk');
+                    } else {
+                        this.setCurrentAnimation('idle');
+                    }
                 }
             }
         } // End of main movement/climbing logic block
 
-        this.updateAnimationFrame(); // Ensure this line is perfectly formed
+        this.updateAnimationFrame();
     } // End of update() method
 
     punch() {
@@ -799,6 +804,7 @@ class Building {
     }
 
     takeDamage(amount) {
+        // --- Ensure numeric values ---
         const numericAmount = Number(amount);
         if (isNaN(numericAmount)) {
             console.error(`[FIX][Building.takeDamage] Invalid damage amount received: ${amount}. Aborting damage.`);
@@ -816,16 +822,21 @@ class Building {
                 return;
             }
         }
+        // --- End Ensure numeric values ---
+
         console.log(`[LOG][Building.takeDamage] Called. Building X: ${this.x}, Amount: ${numericAmount}, Current Health (at entry): ${this.currentHealth}`);
-        if (this.isDestroyed()) {
+
+        if (this.isDestroyed()) { // isDestroyed uses currentHealth, so it's after numeric conversion
             console.log(`[LOG][Building.takeDamage]   Already destroyed. No action.`);
             return;
         }
+
         console.log(`[LOG][Building.takeDamage]   Initial Health: ${this.initialHealth}, Current Health (before subtract): ${this.currentHealth}`);
         this.currentHealth -= numericAmount;
         console.log(`[LOG][Building.takeDamage]   Current Health (after subtract): ${this.currentHealth}`);
+
         if (this.currentHealth <= 0) {
-            this.currentHealth = 0;
+            this.currentHealth = 0; // Clamp health at 0
             score += 100;
             console.log(`[LOG][Building.takeDamage]   DESTROYED by this hit! Score: ${score}. Final Health: ${this.currentHealth}`);
             playSound(sfxBuildingDestroyed);
