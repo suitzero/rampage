@@ -679,10 +679,7 @@ function gameLoop() {
                         enemyProjectiles.splice(i, 1);
                     }
                 }
-                }
-            }
-        }
-    } // End of main 'playing' logic for updates
+    } // End of main 'playing' logic for updates (this closes the inner "if (gameState === 'playing')")
 
     // Drawing logic (should happen regardless of whether game just ended in this frame)
     for (const building of buildings) {

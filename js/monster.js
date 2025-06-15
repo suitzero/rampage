@@ -275,8 +275,7 @@ class Monster {
                         this.setCurrentAnimation('idle');
                     }
                 } // If it was climbing and hit the ground, it might transition to idle/walk if no longer on building
-                }
-            }
+            } // This is the actual end of the if (this.y > gameHeight ...)
         } // End of main movement/climbing logic block
 
         this.updateAnimationFrame();
