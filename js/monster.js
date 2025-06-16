@@ -17,6 +17,7 @@ class Monster {
         this.punchDuration = 30;
         this.punchTimer = 0;
         this.isClimbing = false;
+        this.collidingBuilding = null; // Add this new property
         this.spriteSheet = spriteSheet;
         this.frameWidth = frameWidth;
         this.frameHeight = frameHeight;
@@ -213,7 +214,7 @@ class Monster {
             }
 
             this.isClimbing = false;
-            let collidingBuilding = null; // This needs access to the global `buildings` array or have it passed.
+            this.collidingBuilding = null; // Reset at start of check, assign to class property
             // Assuming `buildings` is global for now as per original structure.
             if (typeof buildings !== 'undefined') {
                 for (const building of buildings) {
@@ -223,7 +224,7 @@ class Monster {
                     const verticalOverlapCheck = (this.y + (this.frameHeight || this.size) > building.y && this.y < building.y + building.height);
                     if (collisionResult && verticalOverlapCheck) {
                         this.isClimbing = true;
-                        collidingBuilding = building;
+                        this.collidingBuilding = building; // Assign to class property
                         // console.log(`[CLIMB_SUCCESS] Monster ${this.color} IS NOW CLIMBING building at X: ${building.x.toFixed(1)}`);
                         break;
                     }
@@ -231,23 +232,23 @@ class Monster {
             }
 
 
-            if (this.isClimbing && collidingBuilding) {
-                this.isMoving = true; // AI currently doesn't set this.isClimbing
+            if (this.isClimbing && this.collidingBuilding) { // Use class property
+                this.isMoving = true;
                 this.setCurrentAnimation('climb');
                 if (this.isAIControlled) {
                     // Basic AI climbing movement if aiAction.up/down were implemented
                     if (this.aiAction.up && this.y > 0) {
-                         this.y -= this.speed; if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
+                         this.y -= this.speed; if (this.y < this.collidingBuilding.y) this.y = this.collidingBuilding.y;
                     }
                     if (this.aiAction.down && this.y < ((typeof canvas !== 'undefined' ? canvas.height : 700) - (this.frameHeight || this.size))) {
-                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > collidingBuilding.y + collidingBuilding.height) this.y = collidingBuilding.y + collidingBuilding.height - (this.frameHeight || this.size);
+                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > this.collidingBuilding.y + this.collidingBuilding.height) this.y = this.collidingBuilding.y + this.collidingBuilding.height - (this.frameHeight || this.size);
                     }
                 } else if (current_key_state) { // Human player
                     if (current_key_state[this.key_config.up] && this.y > 0) {
-                        this.y -= this.speed; if (this.y < collidingBuilding.y) this.y = collidingBuilding.y;
+                        this.y -= this.speed; if (this.y < this.collidingBuilding.y) this.y = this.collidingBuilding.y;
                     }
                     if (current_key_state[this.key_config.down] && this.y < ((typeof canvas !== 'undefined' ? canvas.height : 700) - (this.frameHeight || this.size))) {
-                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > collidingBuilding.y + collidingBuilding.height) this.y = collidingBuilding.y + collidingBuilding.height - (this.frameHeight || this.size);
+                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > this.collidingBuilding.y + this.collidingBuilding.height) this.y = this.collidingBuilding.y + this.collidingBuilding.height - (this.frameHeight || this.size);
                     }
                 }
             } else { // Not climbing or no colliding building
@@ -320,7 +321,14 @@ class Monster {
     }
 
     updateAI(targetMonster, buildingsContext) {
-        if (!this.isAIControlled || this.isDefeated) return;
+        if (!this.isAIControlled || this.isDefeated) {
+            this.aiAction.left = false;
+            this.aiAction.right = false;
+            this.aiAction.up = false;
+            this.aiAction.down = false;
+            this.aiAction.punch = false;
+            return;
+        }
 
         this.aiAction.left = false;
         this.aiAction.right = false;
@@ -333,10 +341,10 @@ class Monster {
         }
 
         const horizontalDistance = targetMonster.x - this.x;
-        const verticalDistance = targetMonster.y - this.y;
+        const verticalDistance = targetMonster.y - this.y; // Positive if target is lower, negative if target is higher
         const aggressionFactor = 0.03;
-
         const buffer = this.speed;
+
         if (horizontalDistance > buffer) {
             this.aiAction.right = true;
         } else if (horizontalDistance < -buffer) {
@@ -345,13 +353,23 @@ class Monster {
 
         if (Math.abs(horizontalDistance) < (this.frameWidth || this.size) * 1.5 &&
             Math.abs(verticalDistance) < (this.frameHeight || this.size)) {
-
             const isFacingTarget = (this.facingDirection === 'right' && horizontalDistance > 0) ||
                                  (this.facingDirection === 'left' && horizontalDistance < 0);
-
             if (isFacingTarget && Math.random() < aggressionFactor) {
                 this.aiAction.punch = true;
             }
+        }
+
+        // AI Climbing Logic - using this.isClimbing (set in previous frame's update)
+        // and this.collidingBuilding (also from previous frame's update)
+        if (this.isClimbing && this.collidingBuilding) {
+            if (verticalDistance < -this.speed) { // Target is significantly above
+                this.aiAction.up = true;
+            } else if (verticalDistance > this.speed) { // Target is significantly below
+                this.aiAction.down = true;
+            }
+        } else if (!this.isClimbing && targetMonster.isClimbing && targetMonster.collidingBuilding) {
+            // AI is not climbing, but target is. Horizontal movement should handle getting to building.
         }
     }
 
