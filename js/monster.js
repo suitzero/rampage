@@ -219,13 +219,18 @@ class Monster {
             if (typeof buildings !== 'undefined') {
                 for (const building of buildings) {
                     if (building.isDestroyed()) continue;
-                    // Ensure checkCollision is available. It should be in utils.js and global.
                     const collisionResult = (typeof checkCollision === 'function') ? checkCollision(this, building) : false;
                     const verticalOverlapCheck = (this.y + (this.frameHeight || this.size) > building.y && this.y < building.y + building.height);
+                    // ADD LOGGING HERE (for human player)
+                    if (!this.isAIControlled && collisionResult) { // Log only for human and if basic collision is true
+                        // console.log(`[P1 CLIMB CHECK] Building (X:${building.x.toFixed(0)}): Collision=${collisionResult}, V.Overlap=${verticalOverlapCheck} (MonsterY:${this.y.toFixed(0)}, MonsterBottom:${(this.y + (this.frameHeight || this.size)).toFixed(0)}, BuildY:${building.y.toFixed(0)}, BuildBottom:${(building.y + building.height).toFixed(0)})`);
+                    }
                     if (collisionResult && verticalOverlapCheck) {
                         this.isClimbing = true;
-                        this.collidingBuilding = building; // Assign to class property
-                        // console.log(`[CLIMB_SUCCESS] Monster ${this.color} IS NOW CLIMBING building at X: ${building.x.toFixed(1)}`);
+                        this.collidingBuilding = building;
+                        if (!this.isAIControlled) { // Log only for human
+                             console.log(`[P1 CLIMB STATUS SET] Now climbing building at X: ${building.x.toFixed(1)}. Monster Y: ${this.y.toFixed(1)}`);
+                        }
                         break;
                     }
                 }
@@ -244,11 +249,71 @@ class Monster {
                         this.y += this.speed; if (this.y + (this.frameHeight || this.size) > this.collidingBuilding.y + this.collidingBuilding.height) this.y = this.collidingBuilding.y + this.collidingBuilding.height - (this.frameHeight || this.size);
                     }
                 } else if (current_key_state) { // Human player
-                    if (current_key_state[this.key_config.up] && this.y > 0) {
-                        this.y -= this.speed; if (this.y < this.collidingBuilding.y) this.y = this.collidingBuilding.y;
+                    // ADD LOGS FOR HUMAN PLAYER INPUT AND GENERAL STATE (moved here to be within current_key_state check)
+                    // console.log(`[P1 UPDATE] Keys: Left=${current_key_state[this.key_config.left]}, Right=${current_key_state[this.key_config.right]}, Up=${current_key_state[this.key_config.up]}, Down=${current_key_state[this.key_config.down]}`);
+                    // console.log(`[P1 UPDATE] isClimbing: ${this.isClimbing}, Y: ${this.y.toFixed(1)}, Speed: ${this.speed}`);
+                    // if (this.collidingBuilding) {
+                    //     console.log(`[P1 UPDATE] CollidingBuilding Y: ${this.collidingBuilding.y.toFixed(1)}, Height: ${this.collidingBuilding.height.toFixed(1)}`);
+                    // } else if (this.isClimbing) { // Should not happen if this.collidingBuilding is null here
+                    //     console.warn('[P1 UPDATE] isClimbing is true but no this.collidingBuilding object!');
+                    // }
+
+                    let localCollidingBuildingForHuman = null;
+                    // Re-check current collision for human player to get the precise building for this frame's up/down action
+                    if (typeof buildings !== 'undefined') {
+                        for (const building of buildings) {
+                            if (building.isDestroyed()) continue;
+                            const collisionResult = (typeof checkCollision === 'function') ? checkCollision(this, building) : false;
+                            const verticalOverlapCheck = (this.y + (this.frameHeight || this.size) > building.y && this.y < building.y + building.height);
+                            if (collisionResult && verticalOverlapCheck) {
+                                localCollidingBuildingForHuman = building;
+                                break;
+                            }
+                        }
                     }
-                    if (current_key_state[this.key_config.down] && this.y < ((typeof canvas !== 'undefined' ? canvas.height : 700) - (this.frameHeight || this.size))) {
-                        this.y += this.speed; if (this.y + (this.frameHeight || this.size) > this.collidingBuilding.y + this.collidingBuilding.height) this.y = this.collidingBuilding.y + this.collidingBuilding.height - (this.frameHeight || this.size);
+
+                    if (localCollidingBuildingForHuman) { // Only proceed with up/down if we confirm a specific building NOW
+                        if (!this.isAIControlled) { // Key state logging, relevant if localCollidingBuildingForHuman exists
+                            // console.log(`[P1 KEY STATE] Up: ${current_key_state[this.key_config.up]}, Down: ${current_key_state[this.key_config.down]}`);
+                        }
+
+                        // UP KEY LOGIC
+                        if (current_key_state[this.key_config.up]) {
+                            console.log(`[P1 CLIMB UP ATTEMPT] Y: ${this.y.toFixed(1)}, KeyUp: ${current_key_state[this.key_config.up]}, Speed: ${this.speed}, LocalBuildingTopY: ${localCollidingBuildingForHuman.y.toFixed(1)}`);
+                            if (this.y > localCollidingBuildingForHuman.y) {
+                                this.y -= this.speed;
+                                console.log(`[P1 CLIMB UP ACTION] NewY: ${this.y.toFixed(1)} (Moved by -${this.speed})`);
+                                if (this.y < localCollidingBuildingForHuman.y) {
+                                    this.y = localCollidingBuildingForHuman.y;
+                                    console.log(`[P1 CLIMB UP ADJUST] Adjusted NewY to LocalBuildingTopY: ${this.y.toFixed(1)}`);
+                                }
+                            } else {
+                                console.log('[P1 CLIMB UP BLOCKED] Already at or above local building top.');
+                            }
+                        }
+
+                        // DOWN KEY LOGIC
+                        if (current_key_state[this.key_config.down]) {
+                            const monsterBottomY = this.y + (this.frameHeight || this.size);
+                            const buildingBottomY = localCollidingBuildingForHuman.y + localCollidingBuildingForHuman.height;
+                            console.log(`[P1 CLIMB DOWN ATTEMPT] Y: ${this.y.toFixed(1)}, KeyDown: ${current_key_state[this.key_config.down]}, MonsterBottom: ${monsterBottomY.toFixed(1)}, LocalBuildingBottomY: ${buildingBottomY.toFixed(1)}`);
+                            if (monsterBottomY < buildingBottomY) {
+                                this.y += this.speed;
+                                console.log(`[P1 CLIMB DOWN ACTION] NewY: ${this.y.toFixed(1)} (Moved by +${this.speed})`);
+                                if (this.y + (this.frameHeight || this.size) > buildingBottomY) {
+                                    this.y = buildingBottomY - (this.frameHeight || this.size);
+                                    console.log(`[P1 CLIMB DOWN ADJUST] Adjusted NewY for MonsterBottom at LocalBuildingBottomY: ${this.y.toFixed(1)}`);
+                                }
+                            } else {
+                                console.log('[P1 CLIMB DOWN BLOCKED] Already at or below local building bottom.');
+                            }
+                        }
+                    } else if (this.isClimbing) {
+                        // This case means this.isClimbing was true (likely from previous frame or earlier in this frame),
+                        // but we couldn't re-confirm a specific building collision for up/down movement.
+                        // This might happen if the monster is just barely at an edge.
+                        // For safety, don't perform up/down movement. Gravity will apply if not on a building.
+                        console.warn('[P1 CLIMB] isClimbing is true, but no specific localCollidingBuildingForHuman found for up/down action.');
                     }
                 }
             } else { // Not climbing or no colliding building
