@@ -137,8 +137,7 @@ function runCheckCollisionTests() {
 
     let allTestsPassed = true;
     testCases.forEach((tc, index) => {
-        console.log(`
---- Test Case ${index + 1}: ${tc.desc} ---`);
+        console.log(` --- Test Case ${index + 1}: ${tc.desc} ---`);
         // console.log("Obj1:", JSON.stringify(tc.obj1));
         // console.log("Obj2:", JSON.stringify(tc.obj2));
 
@@ -152,11 +151,9 @@ function runCheckCollisionTests() {
     });
 
     if (allTestsPassed) {
-        console.log("
---- All checkCollision Unit Tests Passed! ---");
+        console.log(" --- All checkCollision Unit Tests Passed! ---");
     } else {
-        console.error("
---- Some checkCollision Unit Tests Failed! ---");
+        console.error("--- Some checkCollision Unit Tests Failed! ---");
     }
 }
 
