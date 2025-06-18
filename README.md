@@ -1,3 +1,4 @@
+![Example Image](original_rampage.png)
 
 ![Example Image](background-image.png)
 
