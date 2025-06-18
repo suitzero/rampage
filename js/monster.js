@@ -383,25 +383,27 @@ class Monster {
         }
         // Note: Collision with the *other monster* (player or AI) is not handled here.
         // That would typically be a separate check in the game loop or a physics engine.
-    }
 
-    // Check collisions with civilians
-    if (typeof civilians !== 'undefined' && Array.isArray(civilians)) {
-        for (let i = civilians.length - 1; i >= 0; i--) {
-            const civilian = civilians[i];
-            // Ensure civilian object is valid and has necessary properties for checkCollision
-            if (civilian && !civilian.toBeRemoved && typeof civilian.x === 'number' && typeof civilian.y === 'number' &&
-                (typeof civilian.width === 'number' || typeof civilian.size === 'number') &&
-                (typeof civilian.height === 'number' || typeof civilian.size === 'number')) {
+        // MOVED BLOCK STARTS HERE
+        // Check collisions with civilians
+        if (typeof civilians !== 'undefined' && Array.isArray(civilians)) {
+            for (let i = civilians.length - 1; i >= 0; i--) {
+                const civilian = civilians[i];
+                // Ensure civilian object is valid and has necessary properties for checkCollision
+                if (civilian && !civilian.toBeRemoved && typeof civilian.x === 'number' && typeof civilian.y === 'number' &&
+                    (typeof civilian.width === 'number' || typeof civilian.size === 'number') &&
+                    (typeof civilian.height === 'number' || typeof civilian.size === 'number')) {
 
-                if (typeof checkCollision === 'function' && checkCollision(this, civilian)) {
-                    console.log(`Monster ${this.color} punched a civilian!`);
-                    civilian.toBeRemoved = true; // Mark civilian for removal
-                    // Optional: score += 5;
-                    // Optional: playSound(sfxCivilianHit);
+                    if (typeof checkCollision === 'function' && checkCollision(this, civilian)) {
+                        console.log(`Monster ${this.color} punched a civilian!`);
+                        civilian.toBeRemoved = true; // Mark civilian for removal
+                        // Optional: score += 5;
+                        // Optional: playSound(sfxCivilianHit);
+                    }
                 }
             }
         }
+        // MOVED BLOCK ENDS HERE
     }
 
     updateAI(targetMonster, buildingsContext) {
