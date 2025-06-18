@@ -530,6 +530,37 @@ const buildingCollisionWidth = 120;
 let aiEnemies = []; // Changed from const to let
 const numberOfAIEnemies = 2; // Assuming this is defined, keeping as const
 let enemyProjectiles = []; // Changed from const to let
+let civilians = [];
+
+function spawnCivilian() {
+    // For testing, spawn at specific locations or somewhat randomly.
+    // Ensure they spawn on the ground.
+    const groundY = canvas.height - 40; // Assuming civilian height is 40
+    let spawnX;
+    let color = `hsl(${Math.random() * 360}, 70%, 70%)`; // Random lightish color
+
+    if (Math.random() < 0.5) { // Spawn from left or right edge
+        spawnX = (Math.random() < 0.5) ? -20 : canvas.width + 20; // Start off-screen
+    } else { // Spawn near a random building base
+        if (buildings.length > 0) {
+            const randomBuilding = buildings[Math.floor(Math.random() * buildings.length)];
+            spawnX = randomBuilding.x + (randomBuilding.width / 2) - 10; // Center of building, minus half civilian width
+        } else { // Fallback if no buildings
+            spawnX = Math.random() * canvas.width;
+        }
+    }
+    // Ensure spawnX is within canvas to avoid immediate despawn if starting on edge and walking inwards
+    spawnX = Math.max(-10, Math.min(spawnX, canvas.width + 10));
+
+
+    // Ensure Civilian class is defined (civilian.js should be loaded before script.js)
+    if (typeof Civilian === 'function') {
+        civilians.push(new Civilian(spawnX, groundY, color));
+        // console.log(`Spawned civilian at X:${spawnX.toFixed(0)}, Y:${groundY.toFixed(0)}. Total: ${civilians.length}`);
+    } else {
+        console.error("Civilian class not defined! Make sure civilian.js is loaded.");
+    }
+}
 
 function startGame(selectedMode) {
     gameMode = selectedMode;
@@ -559,6 +590,11 @@ function startGame(selectedMode) {
 
     resetGameInternalLogic();
 
+    civilians = []; // Clear previous civilians
+    for (let i = 0; i < 5; i++) { // Spawn 5 civilians for testing
+        spawnCivilian();
+    }
+
     console.log(`Starting game in mode: ${gameMode}. Score: ${score}`);
     gameLoop();
 }
@@ -578,6 +614,7 @@ function resetGame() { // Called on 'R' press during gameOver
     buildings.length = 0;
     aiEnemies.length = 0;
     enemyProjectiles.length = 0;
+    civilians.length = 0;
 
     score = 0;
     gameState = 'menu';
@@ -679,6 +716,15 @@ function gameLoop() {
                         enemyProjectiles.splice(i, 1);
                     }
                 }
+
+        const activeMonsters = [monster, monster2].filter(m => m && !m.isDefeated);
+        for (let i = civilians.length - 1; i >= 0; i--) {
+            const civilian = civilians[i];
+            civilian.update(activeMonsters, buildings);
+            if (civilian.toBeRemoved) {
+                civilians.splice(i, 1);
+            }
+        }
     } // End of main 'playing' logic for updates (this closes the inner "if (gameState === 'playing')")
 
     // Drawing logic (should happen regardless of whether game just ended in this frame)
@@ -697,6 +743,10 @@ function gameLoop() {
         for (const projectile of enemyProjectiles) {
             projectile.draw(ctx);
         }
+    }
+
+    for (const civilian of civilians) {
+        civilian.draw(ctx);
     }
 
     if (gameState === 'playing') {
