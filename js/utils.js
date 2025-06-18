@@ -37,8 +37,8 @@ function checkCollision(obj1, obj2) {
     // ADD LOGGING HERE:
     const obj1Type = obj1.constructor ? obj1.constructor.name : 'Unknown'; // Get class name if possible
     const obj2Type = obj2.constructor ? obj2.constructor.name : 'Unknown';
-    console.log(`[checkCollision] obj1 (${obj1Type}): x=${obj1X?.toFixed(1)}, y=${obj1Y?.toFixed(1)}, w=${obj1Width?.toFixed(1)}, h=${obj1Height?.toFixed(1)}`);
-    console.log(`[checkCollision] obj2 (${obj2Type}): x=${obj2X?.toFixed(1)}, y=${obj2Y?.toFixed(1)}, w=${obj2Width?.toFixed(1)}, h=${obj2Height?.toFixed(1)}`);
+    // console.log(`[checkCollision] obj1 (${obj1Type}): x=${obj1X?.toFixed(1)}, y=${obj1Y?.toFixed(1)}, w=${obj1Width?.toFixed(1)}, h=${obj1Height?.toFixed(1)}`);
+    // console.log(`[checkCollision] obj2 (${obj2Type}): x=${obj2X?.toFixed(1)}, y=${obj2Y?.toFixed(1)}, w=${obj2Width?.toFixed(1)}, h=${obj2Height?.toFixed(1)}`);
 
     // Basic AABB collision detection logic
     const collision = obj1X < obj2X + obj2Width &&
@@ -46,7 +46,7 @@ function checkCollision(obj1, obj2) {
                     obj1Y < obj2Y + obj2Height &&
                     obj1Y + obj1Height > obj2Y;
 
-    console.log(`[checkCollision] Result for ${obj1Type} vs ${obj2Type}: ${collision}`);
+    // console.log(`[checkCollision] Result for ${obj1Type} vs ${obj2Type}: ${collision}`);
 
     if (collision) {
         // console.log(`[checkCollision] Collision DETECTED between ${obj1Type} at X:${obj1X.toFixed(1)} and ${obj2Type} at X:${obj2X.toFixed(1)}`);
@@ -160,4 +160,4 @@ function runCheckCollisionTests() {
     }
 }
 
-runCheckCollisionTests();
+// runCheckCollisionTests();
