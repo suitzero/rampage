@@ -3,7 +3,9 @@
 
 🦍 Rampage AI — Web Remake of the Classic Arcade Game
 A web-based remake of the classic Rampage arcade game, enhanced with AI. Destroy cities, battle opponents, and now... train your own AI to wreak havoc!
-![Example Image](original_rampage.jpg)
+
+original rampage
+![original_rampage](original_rampage.jpg)
 
 🚀 Live Demo
 https://suitzero.github.io/rampage/
