@@ -1,10 +1,11 @@
 // Projectile Class (fired by AIEnemies)
 class Projectile {
-    constructor(x, y, initialSize, color, speedY, damage, spriteSheet = null, frameWidth = 0, frameHeight = 0) {
+    constructor(x, y, initialSize, color, speedX, speedY, damage, spriteSheet = null, frameWidth = 0, frameHeight = 0) {
         this.x = x;
         this.y = y;
         this.size = initialSize;
         this.color = color;
+        this.speedX = speedX; // Added
         this.speedY = speedY;
         this.damage = damage;
         this.spriteSheet = spriteSheet;
@@ -28,6 +29,7 @@ class Projectile {
     }
 
     update() {
+        this.x += this.speedX; // Added
         this.y += this.speedY;
     }
 }
